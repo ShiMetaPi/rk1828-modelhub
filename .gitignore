@@ -1,0 +1,19 @@
+# 模型大文件一律走 models/ 下载脚本，不进 git
+*.rknn
+*.weight
+*.embed.bin
+*.gguf
+*.bin
+
+# 本地环境
+.claude/
+.vscode/
+__pycache__/
+*.pyc
+
+# 编译产物
+vl_engine
+vl_engine.*
+
+# 网卡限速等内部工具不放仓库
+resume_push.py

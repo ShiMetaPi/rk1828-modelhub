@@ -1,0 +1,16 @@
+5d9b19e6101a8e27052e99c111a6ebdf  /root/rknn_MiniCPM5_2B_demo/model/MiniCPM5-2B.rknn
+ad5e0758112acee3a50531f3a44ba372  /root/rknn_MiniCPM5_2B_demo/model/MiniCPM5-2B.weight
+5880a4563d4c2f2e89a9e524d7fc3dfc  /root/rknn_MiniCPM5_2B_demo/model/MiniCPM5-2B.embed.bin
+edc5b118c19664f418c94c3826ddc920  /root/rknn_MiniCPM5_2B_demo/model/MiniCPM5-2B.tokenizer.gguf
+2d3430cf2543959454370a7959cf563c  /root/w8a16/MiniCPM5-2B.rknn
+c102b703ee537f61386ab846557345bd  /root/w8a16/MiniCPM5-2B.weight
+997554665f00c02b340d65ebb29fb557  /userdata/models/qwen2.5-vl-3b/model/Qwen2.5-VL-3B-llm.rknn
+5be5ab29886ce36d011782fcd9ebcefd  /userdata/models/qwen2.5-vl-3b/model/Qwen2.5-VL-3B-llm.weight
+db2b8cac8590332654c72cbab881b48d  /userdata/models/qwen2.5-vl-3b/model/Qwen2.5-VL-3B-llm.embed.bin
+f598aac872e2e157a28b52686a3c9d4e  /userdata/models/qwen2.5-vl-3b/model/Qwen2.5-VL-3B-llm.tokenizer.gguf
+899754108725eca4c6bcd6b2067e59b3  /userdata/models/qwen2.5-vl-3b/model/Qwen2.5-VL-3B-vision.rknn
+879c810f606b7776ff25372d89667456  /userdata/models/qwen2.5-vl-3b/model/Qwen2.5-VL-3B-vision.weight
+313ebdcadf8d80576bfcd0ec708c9a2d  /userdata/models/qwen2.5-vl-3b/lib/librknn3_api.so
+0c2245905b89c20b48d705a82951d847  /userdata/models/qwen2.5-vl-3b/lib/librknn3_api_rkcp.so
+fac578d390b934ba392b25a855e37875  /userdata/models/qwen2.5-vl-3b/lib/librga.so
+84c93792a8cb5fb6abf460960b0abd4e  /userdata/models/qwen2.5-vl-3b/lib/libSpeedUP.so

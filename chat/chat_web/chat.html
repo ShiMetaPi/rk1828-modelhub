@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RK1828 · MiniCPM5-2B 对话</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --txt:#e8eaf0; --dim:#8b93a5;
+          --acc:#4f8cff; --user:#2b5cc0; --bot:#232833; --warn:#c0392b; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--txt);
+         font-family:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px;
+           background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; font-weight:600; flex:1; }
+  #dot { width:10px; height:10px; border-radius:50%; background:#555; flex:none; }
+  #dot.ok { background:#2ecc71; } #dot.switch { background:#f1c40f; } #dot.bad { background:var(--warn); }
+  select { background:var(--panel); color:var(--txt); border:1px solid var(--line);
+           border-radius:8px; padding:6px 10px; font-size:13px; outline:none; cursor:pointer; }
+  select:focus { border-color:var(--acc); }
+  #banner { display:none; padding:6px 16px; font-size:12px; color:#fff; background:var(--warn); }
+  #banner.info { background:#8a6d1a; }
+  #chat { flex:1; overflow-y:auto; padding:16px 18px; display:flex;
+          flex-direction:column; gap:10px; max-width:860px; width:100%; margin:0 auto; }
+  .msg { max-width:80%; padding:8px 12px; border-radius:10px; font-size:14px;
+         line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+  .user { align-self:flex-end; background:var(--user); color:#fff; }
+  .bot  { align-self:flex-start; background:var(--bot); }
+  .bot.error { border:1px solid var(--warn); color:#f0a0a0; }
+  .stats { display:block; margin-top:6px; font-size:11px; color:var(--dim); }
+  .notice { align-self:center; max-width:92%; padding:4px 12px; font-size:12px;
+            color:var(--dim); background:var(--panel); border:1px dashed var(--line);
+            border-radius:8px; text-align:center; }
+  .dots span { animation:blink 1.2s infinite; }
+  .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+  @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+  #inputbar { display:flex; gap:8px; padding:10px; border-top:1px solid var(--line);
+              max-width:860px; width:100%; margin:0 auto; }
+  #q { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--txt);
+       border-radius:8px; padding:9px 12px; font-size:14px; outline:none; }
+  #q:focus { border-color:var(--acc); }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px;
+           padding:9px 16px; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.45; cursor:default; }
+  #reset { background:transparent; border:1px solid var(--line); color:var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>RK1828 · MiniCPM5-2B 对话</h1>
+  <select id="quant" title="量化版本（切换需重载模型 15~30 秒，会清空对话）">
+    <option value="w4">W4A16 · 快</option>
+    <option value="w8">W8A16 · 精</option>
+  </select>
+  <div id="dot"></div>
+  <button id="reset">重置对话</button>
+</header>
+<div id="banner"></div>
+<div id="chat"></div>
+<div id="inputbar">
+  <input id="q" placeholder="输入问题开始对话，回车发送（Shift+回车换行）" autocomplete="off">
+  <button id="send">发送</button>
+</div>
+<script>
+const chat = document.getElementById('chat');
+const q = document.getElementById('q');
+const sendBtn = document.getElementById('send');
+const sel = document.getElementById('quant');
+const dot = document.getElementById('dot');
+const banner = document.getElementById('banner');
+
+function addBubble(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+function addNotice(text) {
+  const n = document.createElement('div');
+  n.className = 'notice';
+  n.textContent = text;
+  chat.appendChild(n);
+  chat.scrollTop = chat.scrollHeight;
+}
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let busy = false;          // 生成中（串行一条）
+let pendingQuant = null;   // 切换中：等 ready 且 quant 对上才清屏
+
+// ---- 问答（JSONL 行协议流式）----
+async function ask() {
+  const text = q.value.trim();
+  if (!text || busy) return;
+  busy = true; sendBtn.disabled = true; q.value = '';
+  addBubble('user', text);
+  const bot = addBubble('bot', '');
+  bot.innerHTML = '<span class="dots"><span>●</span><span>●</span><span>●</span></span>';
+  try {
+    const res = await fetch('/api/chat', {method:'POST', body:text});
+    if (!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let acc = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      acc += dec.decode(value, {stream:true});
+      let nl;
+      while ((nl = acc.indexOf('\n')) >= 0) {
+        const line = acc.slice(0, nl); acc = acc.slice(nl + 1);
+        if (!line) continue;
+        let ev;
+        try { ev = JSON.parse(line); } catch (e) { continue; }
+        if (ev.ev === 't') {
+          bot.dataset.ans = (bot.dataset.ans || '') + ev.text;
+          bot.textContent = bot.dataset.ans;
+        } else if (ev.ev === 'notice') {
+          addNotice(ev.text);
+        } else if (ev.ev === 'stats') {
+          bot.innerHTML = escapeHtml(bot.dataset.ans || '') +
+            '<span class="stats">' + ev.tokens + ' token · prefill ' + ev.prefill_ms +
+            'ms · ' + ev.tps + ' tok/s · 上下文 ~' + ev.ctx + '/' + '2048' + ' token</span>';
+        } else if (ev.ev === 'error') {
+          bot.className = 'msg bot error';
+          bot.textContent = ev.text;
+        }
+        chat.scrollTop = chat.scrollHeight;
+      }
+    }
+    if (!bot.textContent) bot.textContent = bot.dataset.ans || '（连接中断）';
+  } catch (e) {
+    bot.className = 'msg bot error';
+    bot.textContent = '发送失败：' + e.message;
+  }
+  busy = false; sendBtn.disabled = false; q.focus();
+}
+
+// 关页即释放 NPU（正常关闭走 beacon 立即释放；崩溃/断电由服务端 75 秒兜底）
+window.addEventListener('pagehide', () => { navigator.sendBeacon('/api/bye'); });
+
+sendBtn.onclick = ask;
+q.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+});
+document.getElementById('reset').onclick = async () => {
+  await fetch('/api/reset', {method:'POST'}).catch(()=>{});
+  chat.innerHTML = '';
+  addBubble('bot', '对话上下文已重置（含摘要）。');
+};
+
+// ---- 量化切换 ----
+sel.onchange = async () => {
+  if (busy) return;
+  pendingQuant = sel.value;
+  sendBtn.disabled = true; q.disabled = true;
+  await fetch('/api/select', {method:'POST', body:sel.value}).catch(()=>{});
+};
+
+// ---- 状态轮询 ----
+async function poll() {
+  let st = {phase:'down', detail:''};
+  try { st = await (await fetch('/api/status')).json(); } catch (e) {}
+  if (st.quant && !pendingQuant && sel.value !== st.quant && st.phase === 'ready')
+    sel.value = st.quant;   // 初次载入同步当前量化
+  dot.className = st.phase === 'ready' ? 'ok' : (st.phase === 'down' ? 'bad' : 'switch');
+  if (st.phase === 'ready') {
+    banner.style.display = 'none';
+    if (pendingQuant) {   // 切换完成
+      if (st.quant === pendingQuant) {
+        pendingQuant = null;
+        chat.innerHTML = '';
+        addBubble('bot', '已切换到 ' + (st.quant === 'w8' ? 'W8A16' : 'W4A16') +
+                        '，模型重载完成，对话已清空。');
+      }
+    } else {
+      sendBtn.disabled = busy; q.disabled = false;
+    }
+  } else {
+    banner.textContent = st.detail || '模型加载中…';
+    banner.className = st.phase === 'down' ? '' : 'info';
+    banner.style.display = 'block';
+    if (st.phase === 'down' && !pendingQuant) {   // 被外部停了（如视频演示互斥）→ 回到可选择状态
+      sendBtn.disabled = false; q.disabled = false;
+    } else {
+      sendBtn.disabled = true; q.disabled = true;
+    }
+  }
+}
+poll();
+setInterval(poll, 3000);
+</script>
+</body>
+</html>

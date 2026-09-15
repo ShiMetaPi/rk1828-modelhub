@@ -1,4 +1,9 @@
-# 模型下载与部署
+[← 返回总览](../README.md)
+
+# 📦 模型下载与部署
+
+![规模](https://img.shields.io/badge/16%20%E4%B8%AA%E6%96%87%E4%BB%B6%20%C2%B7%20%E7%BA%A6%207.3G-0e7490.svg)
+![校验](https://img.shields.io/badge/MD5%20%E6%A0%A1%E9%AA%8C%20%C2%B7%20%E6%96%AD%E7%82%B9%E7%BB%AD%E4%BC%A0-1e293b.svg)
 
 模型文件比较大（最大单个 2.5GB），不适合放进 git 仓库，统一放在 GitHub Releases 上，用本目录的脚本一条命令拉下来、校验、放到 demo 期望的位置。
 
@@ -35,9 +40,14 @@ GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh models/download_models.sh all       # �
 cd models && md5sum -c md5sum.txt
 ```
 
-网络不好或想走加速代理，可以覆盖下载源：
+<details>
+<summary><b>网络不好 / 想走加速代理？</b></summary>
+
+下载源可以用 `BASE_URL` 覆盖，比如走 ghproxy 加速：
 
 ```bash
-BASE_URL=https://ghproxy.cn/https://github.com/owner/name/releases/download/models \
+BASE_URL=https://ghproxy.cn/https://github.com/ShiMetaPi/rk1828-modelhub/releases/download/models \
   sh models/download_models.sh vl
 ```
+
+</details>

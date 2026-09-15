@@ -1,11 +1,21 @@
-# MiniCPM5-2B 聊天 Demo
+[← 返回总览](../README.md)
 
-跑在板子上的浏览器聊天界面：流式输出、多轮对话，上下文快满时自动把旧对话压成一段摘要接着聊（页面上会有提示条），右上角下拉可以在 W4A16 和 W8A16 之间切换。纯 Python 标准库写的，不用编译。
+# 💬 MiniCPM5-2B 聊天 Demo
+
+![端口](https://img.shields.io/badge/%E7%AB%AF%E5%8F%A3-8089-0e7490.svg)
+![免编译](https://img.shields.io/badge/%E7%BA%AF%20Python%20%C2%B7%20%E5%85%8D%E7%BC%96%E8%AF%91-1e293b.svg)
+![量化](https://img.shields.io/badge/W4A16%20%7C%20W8A16%20%E5%9C%A8%E7%BA%BF%E5%88%87%E6%8D%A2-1e293b.svg)
+
+跑在板子上的浏览器聊天界面：流式输出、多轮对话，上下文快满时自动把旧对话压成一段摘要接着聊（页面上会有提示条），右上角下拉可以在 W4A16 和 W8A16 之间切换。
+
+<img src="../docs/img/chat_demo.png" alt="聊天 demo 界面" width="560">
 
 ## 准备
 
 - 板子系统里要有 `rkllm3-server`（终端里 `which rkllm3-server` 能找到就行）
-- 模型已经放到板子上（怎么放见仓库 models/ 的说明），程序默认从这些位置读：
+- **记忆功能（可选）**：`sh setup_memory.sh` 装好 mem0 环境后自动开启。长期事实（偏好、工作地点、之前聊过的话题等）跨轮不丢；名字/自我介绍类问题因模型 rlhf 固化仍是已知限制。默认不开（自动降级为仅会话内档案）
+
+- 模型已经放到板子上（怎么放见仓库 [models/](../models/README.md) 的说明），程序默认从这些位置读：
 
 | 东西 | 板子上的位置 |
 |---|---|
@@ -45,7 +55,8 @@ ssh root@<板子IP> "sh /root/chat_web/start.sh"
 ssh root@<板子IP> "sh /root/chat_web/start.sh stop"
 ```
 
-## 出问题了看哪里
+<details>
+<summary><b>出问题了看哪里</b></summary>
 
 | 现象 | 在板子上看 |
 |---|---|
@@ -53,8 +64,13 @@ ssh root@<板子IP> "sh /root/chat_web/start.sh stop"
 | 页面没反应 | `pgrep -af rkllm3-server`，`curl 127.0.0.1:8081/v1/models` |
 | 网页壳本身的日志 | `tail /tmp/chat_web.log` |
 
-## 一些已知行为
+</details>
+
+<details>
+<summary><b>一些已知行为</b></summary>
 
 - 模型上下文 2048 token，聊满了自动清理：旧对话变成一段文字摘要塞回去，最近两轮保留原文，页面出一条提示条。跨清理模型仍记得之前聊过的内容，可以放心长聊
 - `<think>` 思考模式默认关着，开了会啰嗦很多还慢
 - 实际速度：W4 大约 105 token/s，W8 大约 70 token/s
+
+</details>

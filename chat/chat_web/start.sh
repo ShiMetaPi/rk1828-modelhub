@@ -11,7 +11,9 @@ if [ "$1" = "stop" ]; then
     echo STOPPED; exit 0
 fi
 
-setsid nohup python3 "$DIR/chat_web.py" > /tmp/chat_web.log 2>&1 < /dev/null &
+PY=/userdata/mem0env/bin/python3   # mem0 venv（含长期记忆）；没装则回退系统 python3
+[ -x "$PY" ] || PY=python3
+setsid nohup "$PY" "$DIR/chat_web.py" > /tmp/chat_web.log 2>&1 < /dev/null &
 sleep 2
 echo "--- chat_web log ---"; tail -5 /tmp/chat_web.log
 echo "浏览器打开 http://$(hostname -I | awk "{print $1}"):8089（页面打开后模型自动加载 15~30 秒）"

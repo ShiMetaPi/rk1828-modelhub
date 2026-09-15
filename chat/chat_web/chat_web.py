@@ -29,6 +29,14 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+try:
+    from memory import MemoryStore, compose_system
+    MEM = MemoryStore()
+except Exception as _e:
+    MEM = None
+    compose_system = None
+    print("[chat_web] 记忆模块不可用：%s" % _e, flush=True)
+
 # ---- 配置 ----
 W4_DIR = "/root/rknn_MiniCPM5_2B_demo/model"
 W8_DIR = "/root/w8a16"
@@ -216,8 +224,11 @@ def trim_if_needed():
     if before + MARGIN <= threshold:
         hist_tokens = before
         return None
-    pairs = [(history[i]["content"], history[i + 1]["content"])
-             for i in range(0, len(history) - 1, 2)]
+    # 只对 user/assistant 配对，跳过开头的 system 摘要——否则第二次裁剪起
+    # system 会被误当成"问"、user 被当成"答"，摘要问/答错位污染上下文
+    msgs = [m for m in history if m["role"] in ("user", "assistant")]
+    pairs = [(msgs[i]["content"], msgs[i + 1]["content"])
+             for i in range(0, len(msgs) - 1, 2)]
     keep = KEEP_TURNS
     while True:
         old_pairs, keep_pairs = pairs[:-keep] or [], pairs[-keep:]
@@ -285,9 +296,19 @@ def do_chat(handler, text):
         if notice:
             handler.send_event({"ev": "notice", "text": notice})
 
+        # 长期记忆召回：命中事实放 system 顶部（名字等常驻，不被对话流淹没）。
+        # 权威 history 不动——记忆 system 只进本轮请求，裁剪逻辑照旧管 history
+        mem_facts = MEM.recall(text) if MEM else []
         history.append({"role": "user", "content": text})
+        sys_msg = []
+        if MEM and compose_system:
+            recap = next((m["content"] for m in history
+                          if m["role"] == "system"), "")
+            sys_text = compose_system(mem_facts, recap)
+            if sys_text:
+                sys_msg = [{"role": "system", "content": sys_text}]
         payload = json.dumps({
-            "messages": history,
+            "messages": sys_msg + [m for m in history if m["role"] != "system"],
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "repeat_penalty": REPEAT_PENALTY,
@@ -340,6 +361,10 @@ def do_chat(handler, text):
             handler.send_event({"ev": "error", "text": "模型没有输出正文（可能思考被截断）"})
             return
         history.append({"role": "assistant", "content": full})
+        # 异步入库：mem0 抽取要在 NPU 上跑一次 LLM（2~5s），不挡流式回复
+        if MEM:
+            threading.Thread(target=MEM.add_turn, args=(text, full),
+                             daemon=True).start()
 
         t_end = time.time()
         prefill_ms = (t_first - t0) * 1000 if t_first else 0
@@ -394,6 +419,7 @@ class Handler(BaseHTTPRequestHandler):
             heartbeat()   # 页面在看着我 = 生命周期信号
             with state_lock:
                 st = dict(state)
+                st["mem"] = MEM.mode if MEM else "off"   # mem0 | profile | off
             # 就绪状态也要防服务被外部杀掉
             if st["phase"] == "ready" and running_quant() is None:
                 st["phase"] = "down"
@@ -469,6 +495,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/reset":
             heartbeat()
             reset_history()
+            if MEM:
+                MEM.reset()   # 重置对话 = 连长期记忆一起清（demo 语义：干净开始）
             body = b'{"ok":true}'
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

@@ -39,8 +39,8 @@ CHAT_W4_FILES="MiniCPM5-2B.rknn|model/MiniCPM5-2B.rknn
 MiniCPM5-2B.weight|model/MiniCPM5-2B.weight
 MiniCPM5-2B.embed.bin|model/MiniCPM5-2B.embed.bin
 MiniCPM5-2B.tokenizer.gguf|model/MiniCPM5-2B.tokenizer.gguf"
-CHAT_W8_FILES="MiniCPM5-2B.rknn|MiniCPM5-2B.rknn
-MiniCPM5-2B.weight|MiniCPM5-2B.weight"
+CHAT_W8_FILES="MiniCPM5-2B-w8.rknn|MiniCPM5-2B.rknn
+MiniCPM5-2B-w8.weight|MiniCPM5-2B.weight"
 VL_FILES="Qwen2.5-VL-3B-llm.rknn|model/Qwen2.5-VL-3B-llm.rknn
 Qwen2.5-VL-3B-llm.weight|model/Qwen2.5-VL-3B-llm.weight
 Qwen2.5-VL-3B-llm.embed.bin|model/Qwen2.5-VL-3B-llm.embed.bin

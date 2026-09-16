@@ -16,7 +16,7 @@
 
 - 板子上有 `g++` 和 libjpeg 开发头文件，缺就 `apt install -y g++ libjpeg-dev`
 - 一个 UVC USB 摄像头（支持 MJPG 1080p 就行，自动识别 `/dev/video*`，倒着装也没关系，页面会翻正）
-- 模型放到 `/userdata/models/qwen2.5-vl-3b/`（怎么放见仓库 [models/](../models/README.md) 的说明）：`model/` 下六个模型文件，`lib/` 下是运行库（编译和运行都从这里找）
+- 模型放到 `/userdata/models/qwen2.5-vl-3b/`（运行本目录下的 `deploy.sh` 一键拉取、校验、放到默认位置）：`model/` 下六个模型文件，`lib/` 下是运行库（编译和运行都从这里找）
 
 ## 跑起来
 

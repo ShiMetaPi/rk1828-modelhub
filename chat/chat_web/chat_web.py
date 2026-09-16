@@ -12,8 +12,13 @@
   - 启动前 NPU 已被占（其他 demo 在跑）→ 报错拒绝启动，绝不硬闯
     （硬闯会把 NPU 驱动挂死到只能重启板子）。本策略是所有 demo 的通用规则
 
-其余: 上下文满了自动裁剪 + 文字摘要续命 + 聊天框提示; 板端 SSE →
-JSONL 行协议流式转发 {"ev":"t|notice|stats|error|done", ...}。
+其余: 两阶段问答（2026-09-16）——同一个模型三种调用:
+  ① 检索: 答前拿摘要区问一次模型，命中的一句相关信息进 system 顶部
+  ② 回答: 正常流式输出（原有路径不变）
+  ③ 摘要: 答完后异步提炼本轮值得记住的信息，append 到摘要区
+  摘要区 = merged_old（更早合并摘要）+ 最近 10 条单句，有界不膨胀;
+  原文只保留最近 2 轮，旧的由摘要接管。CHAT_WEB_TWOPHASE=0 可关掉。
+板端 SSE → JSONL 行协议流式转发 {"ev":"t|notice|stats|error|done", ...}。
 
 实测依据（2026-09-14）:
   - 模型上下文上限 2048（服务默认 4096 被自动压到 2048，启动日志可见）
@@ -39,12 +44,15 @@ CHAT_TEMPLATE = "/root/rknn_MiniCPM5_2B_demo/minicpm5.jinja"
 MODEL_PORT = 8081   # rkllm3-server
 WEB_PORT = 8089     # 本页面
 
-MAX_CTX = int(os.environ.get("CHAT_WEB_MAXCTX", 2048))  # 测试自动清理可调小
-RESERVE = 512       # 给回答留的余量（真超了只会截断回答，不致命）
-MARGIN = 64         # 估算误差缓冲
-RECAP_TURNS = 3     # 摘要收纳最近几轮被裁掉的旧对话
-RECAP_Q, RECAP_A = 60, 120   # 摘要里问/答截断（字符）
-KEEP_TURNS = 2      # 裁剪后保留最近几轮原文
+# ---- 两阶段问答（2026-09-16）：检索→回答→摘要，同一个模型三种调用 ----
+TWOPHASE = os.environ.get("CHAT_WEB_TWOPHASE", "1") == "1"  # 0=关掉回到纯问答
+SUMMARY_MAX = 80     # 检索/摘要调用 max_tokens
+SUMMARY_TEMP = 0.3   # 低温度求稳
+SUMMARY_TOPK = 1     # 贪心，输出可复现
+RECENT_TURNS = 2     # 请求里保留最近几轮原文（旧的进摘要管线）
+SUMMARY_KEEP = 10    # 摘要列表上限，超过把最老的并进 merged_old
+SUMMARY_MERGE_N = 5  # 每次合并的条数
+SUMMARY_Q, SUMMARY_A = 60, 200   # 摘要调用里问/答截断（字符）
 MAX_TOKENS = 1024   # 单条回答上限
 TEMPERATURE = 0.7
 REPEAT_PENALTY = 1.1   # 不加会复读机循环（实测）
@@ -66,8 +74,13 @@ gen_lock = threading.Lock()   # 板子单槽，一次只生成一条
 ensure_lock = threading.Lock()   # 同时只允许一个拉起/释放流程
 last_seen = [0.0]      # 最近一次页面心跳（monotonic）
 
-history = []           # [{"role","content"}] 权威对话（不含摘要 system）
+history = []           # [{"role","content"}] 最近几轮原文（旧内容进摘要管线）
 hist_tokens = 0        # 上一轮请求的 prompt+completion 估算值
+
+summaries = []         # 每轮一句摘要，最近在尾（两阶段问答的长期记忆）
+merged_old = ""        # 更早轮次的合并摘要（一行槽位格式，≤80字）
+sum_lock = threading.Lock()
+mem_epoch = [0]        # reset 代际：在途摘要线程据此丢弃过期的 append
 
 
 def run(cmd, timeout=30):
@@ -200,45 +213,117 @@ def history_tokens():
     return n
 
 
-def build_recap(pairs):
-    """被裁掉的旧轮 → 文字摘要（同 vl_demo BuildRecap：只收文字，截断防膨胀）"""
-    parts = ["［此前对话文字摘要，供你延续语境，无需回应］"]
-    for q, a in pairs[-RECAP_TURNS:]:
-        parts.append("问:%s 答:%s。" % (q[:RECAP_Q], a[:RECAP_A]))
-    return "".join(parts)
+# ---- 两阶段问答的三个辅助调用 -----------------------------------------------
+# 都走同一个 rkllm3-server（OpenAI 兼容），enable_thinking=false，互不流式。
+
+def llm_once(messages, max_tokens=SUMMARY_MAX):
+    """非流式单次调用（检索/摘要/合并共用）。失败/超时返回 ''。"""
+    payload = json.dumps({
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": SUMMARY_TEMP,
+        "top_k": SUMMARY_TOPK,
+        "repeat_penalty": REPEAT_PENALTY,
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }).encode()
+    req = urllib.request.Request(
+        "http://127.0.0.1:%d/v1/chat/completions" % MODEL_PORT, data=payload,
+        headers={"Content-Type": "application/json"})
+    try:
+        with OPENER.open(req, timeout=20) as r:
+            data = json.loads(r.read())
+        content = (data.get("choices") or [{}])[0].get("message", {}) \
+            .get("content", "")
+        return re.sub(THINK_RE, "", content).strip()   # 去空 think 壳
+    except Exception as e:
+        print("[chat_web] 辅助调用失败（忽略）：%s" % e, flush=True)
+        return ""
 
 
-def trim_if_needed():
-    """上下文要满了: 旧轮→摘要 system，保留最近 KEEP_TURNS 轮原文。返回提示文案或 None"""
-    global history, hist_tokens
-    threshold = MAX_CTX - RESERVE
-    before = history_tokens()
-    if before + MARGIN <= threshold:
-        hist_tokens = before
-        return None
-    pairs = [(history[i]["content"], history[i + 1]["content"])
-             for i in range(0, len(history) - 1, 2)]
-    keep = KEEP_TURNS
-    while True:
-        old_pairs, keep_pairs = pairs[:-keep] or [], pairs[-keep:]
-        recap = build_recap(old_pairs) if old_pairs else ""
-        history = ([{"role": "system", "content": recap}] if recap else []) + \
-                  [m for p in keep_pairs for m in
-                   ({"role": "user", "content": p[0]},
-                    {"role": "assistant", "content": p[1]})]
-        after = history_tokens()
-        if after + MARGIN <= threshold or keep == 1:
-            break
-        keep = 1   # 保留 2 轮仍超（单轮特别长）——只留最近 1 轮
-    hist_tokens = after
-    return "上下文已满，自动清理（约 %d→%d token）：旧对话已压缩成摘要，最近 %d 轮保留原文" \
-        % (before, after, keep)
+def summary_block():
+    """注入 system 的摘要全文 = merged_old + 最近摘要（首轮为空）"""
+    with sum_lock:
+        parts = ([merged_old] if merged_old else []) + list(summaries)
+    return "\n".join(parts)
+
+
+def merge_summaries(old_list, current_merged):
+    """把旧摘要并成一行（在摘要后台线程内调用，可再花一次模型调用）。
+
+    必须保持「名字：xx；偏好：xx」槽位格式——2B 模型靠字面"名字："锚定
+    回答名字类问题，合并成自然语句会丢锚点（实测）。
+    """
+    text = "；".join(([current_merged] if current_merged else []) + old_list)
+    out = llm_once([
+        {"role": "system", "content": "你是对话摘要合并器。"},
+        {"role": "user",
+         "content": "把以下条目合并成一行，保持「名字：xx；偏好：xx；其他：xx」"
+                    "格式，同类项用、连接，保留全部信息，不超过80字：\n%s" % text},
+    ], max_tokens=120)
+    return out if (out and not out.startswith("无")) else text
+
+
+def summarize_turn(q, a):
+    """③ 摘要：答完后异步调用，提炼本轮值得长期记住的信息。"""
+    global summaries, merged_old
+    if not TWOPHASE:
+        return
+    epoch = mem_epoch[0]   # reset 过的会话不再入库（防在途线程污染新会话）
+    out = llm_once([
+        {"role": "system", "content": "你是对话信息提取器。"},
+        {"role": "user",
+         "content": "从对话中提取用户信息，只输出结果。\n"
+                    "格式：名字：xx；偏好：xx；其他：xx。没提到的项整个跳过。\n"
+                    "示例：问：我喜欢蓝色 → 偏好：蓝色\n"
+                    "示例：问：我在深圳工作 → 其他：工作地深圳\n"
+                    "示例：问：我养了一只猫 → 其他：宠物猫\n"
+                    "示例：问：我姓王，喜欢打羽毛球 → 名字：王；偏好：羽毛球\n"
+                    "示例：问：1+1等于几？ → 无\n"
+                    "问：%s\n答：%s" % (q[:SUMMARY_Q], a[:SUMMARY_A])},
+    ])
+    # 模型爱把没提取到的槽填成"无/未提及"，还会输出整句解释性拒绝
+    # （"根据对话内容，未提及任何个人信息…"）——这类行入库会带偏后续
+    # 检索，按段过滤，全空则本轮不入库
+    segs = []
+    for s in out.split("；"):
+        s = s.strip().rstrip("。.")
+        if not s or s == "无":
+            continue
+        if "未提及" in s or re.search(r"[:：]\s*(无|none)\s*$", s, re.I):
+            continue
+        segs.append(s)
+    out = "；".join(segs)
+    if not out or out.startswith("无") or len(out) < 2:
+        return
+    if epoch != mem_epoch[0]:
+        return   # 期间发生过 reset，丢弃
+    with sum_lock:
+        summaries.append(out[:60])
+        overflow = len(summaries) > SUMMARY_KEEP
+        if overflow:
+            old = summaries[:SUMMARY_MERGE_N]
+            summaries[:] = summaries[SUMMARY_MERGE_N:]
+        else:
+            old = None
+    if old:
+        merged_old = merge_summaries(old, merged_old)   # 锁外做，可能要几秒
+
+
+def trim_raw_history():
+    """原文只留最近 RECENT_TURNS 轮——旧内容已由摘要管线接管。"""
+    global history
+    del history[:max(0, len(history) - RECENT_TURNS * 2)]
 
 
 def reset_history():
-    global history, hist_tokens
+    global history, hist_tokens, summaries, merged_old
     history = []
     hist_tokens = 0
+    with sum_lock:
+        summaries = []
+        merged_old = ""
+        mem_epoch[0] += 1   # 在途摘要线程作废
 
 
 # ---- 推理（SSE → JSONL）-----------------------------------------------------
@@ -281,13 +366,16 @@ def do_chat(handler, text):
                                 "text": "模型未就绪（%s），稍后再试" % phase})
             return
 
-        notice = trim_if_needed()
-        if notice:
-            handler.send_event({"ev": "notice", "text": notice})
-
+        # 摘要区直注 system（实测优于先让模型检索一遍：2B 检索会漏配，
+        # 且摘要区本身就只有十几行短句）。首轮无摘要则跳过。
+        text = text[:2000]   # 超长输入截断（demo 级护栏）
         history.append({"role": "user", "content": text})
+        block = summary_block() if TWOPHASE else ""
+        sys_msg = ([{"role": "system",
+                     "content": "历史对话摘要（此前对话的记忆，回答时参考）：\n%s" % block}]
+                   if block else [])
         payload = json.dumps({
-            "messages": history,
+            "messages": sys_msg + history,
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "repeat_penalty": REPEAT_PENALTY,
@@ -339,7 +427,12 @@ def do_chat(handler, text):
             history.pop()
             handler.send_event({"ev": "error", "text": "模型没有输出正文（可能思考被截断）"})
             return
-        history.append({"role": "assistant", "content": full})
+        history.append({"role": "assistant", "content": full[:800]})  # 原文存档截断（已摘要+已流式展示）
+        # ③ 异步摘要（不挡流式/下一轮）+ 原文收敛到最近几轮
+        if TWOPHASE:
+            threading.Thread(target=summarize_turn, args=(text, full),
+                             daemon=True).start()
+        trim_raw_history()
 
         t_end = time.time()
         prefill_ms = (t_first - t0) * 1000 if t_first else 0
@@ -394,6 +487,8 @@ class Handler(BaseHTTPRequestHandler):
             heartbeat()   # 页面在看着我 = 生命周期信号
             with state_lock:
                 st = dict(state)
+                with sum_lock:
+                    st["summaries"] = len(summaries)   # 摘要条数（可观测）
             # 就绪状态也要防服务被外部杀掉
             if st["phase"] == "ready" and running_quant() is None:
                 st["phase"] = "down"

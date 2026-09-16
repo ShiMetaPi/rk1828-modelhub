@@ -503,7 +503,7 @@ class Handler(BaseHTTPRequestHandler):
             # → 只要没有进行中的拉起流程，就（重）试拉起模型
             if st["phase"] in ("idle", "down") and ensure_lock.acquire(False):
                 ensure_lock.release()
-                quant = st["quant"] or "w4"
+                quant = st["quant"] or "w8"   # W8 体验更好（量化损失小）；可页面下拉切 W4
                 st["detail"] = st["detail"] or \
                     "正在加载 MiniCPM5-2B %s（15~30 秒）…" % quant.upper()
                 threading.Thread(target=ensure_server, args=(quant,),

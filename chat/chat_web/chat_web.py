@@ -427,7 +427,13 @@ def do_chat(handler, text):
             history.pop()
             handler.send_event({"ev": "error", "text": "模型没有输出正文（可能思考被截断）"})
             return
-        history.append({"role": "assistant", "content": full[:800]})  # 原文存档截断（已摘要+已流式展示）
+        # 自我介绍样板存档换成中性替身：上一轮是自我介绍时，下一轮陈述句
+        # 有 4/5 概率复读它（实测换替身后 0/5）。页面看到的原话不受影响，
+        # 摘要线程拿的也是原始 full。
+        stored = full[:800]
+        if len(stored) < 160 and ("MiniCPM" in stored or "面壁智能" in stored):
+            stored = "你好！很高兴认识你。"
+        history.append({"role": "assistant", "content": stored})
         # ③ 异步摘要（不挡流式/下一轮）+ 原文收敛到最近几轮
         if TWOPHASE:
             threading.Thread(target=summarize_turn, args=(text, full),

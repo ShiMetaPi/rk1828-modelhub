@@ -12,6 +12,26 @@ pkill -f "[v]l_demo/watch.sh" 2>/dev/null
 sleep 1
 if [ "$1" = "stop" ]; then echo STOPPED; exit 0; fi
 
+# ── 依赖探测：缺什么列什么，缺则退出 ─────────────────────────────
+check_deps() {
+  missing=0
+  echo "[依赖] 检查运行环境…"
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "  缺 python3"; missing=1
+  fi
+  if [ ! -x "$DIR/vl_engine" ]; then
+    echo "  缺 vl_engine"; missing=1
+  fi
+  if [ "$missing" = 1 ]; then
+    echo "[依赖] 补齐上面缺的组件后重跑"
+    return 1
+  fi
+  echo "[依赖] 就绪"
+  return 0
+}
+
+check_deps || exit 1
+
 nohup python3 "$DIR/web/web.py" > /tmp/vl_web.log 2>&1 &
 sleep 1
 setsid nohup sh "$DIR/watch.sh" $MODE > /tmp/vl_watch.log 2>&1 < /dev/null &

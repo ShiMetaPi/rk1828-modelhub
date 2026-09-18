@@ -14,7 +14,7 @@
 
 ## 准备
 
-- 板子上有 `g++` 和 libjpeg 开发头文件，缺就 `apt install -y g++ libjpeg-dev`
+- 板子上有 `g++` 和 libjpeg 开发头文件；`sh build.sh` 会自动探测，缺了会告诉你
 - 一个 UVC USB 摄像头（支持 MJPG 1080p 就行，自动识别 `/dev/video*`，倒着装也没关系，页面会翻正）
 - 模型放到 `/userdata/models/qwen2.5-vl-3b/`（运行本目录下的 `deploy.sh` 一键拉取、校验、放到默认位置）：`model/` 下六个模型文件，`lib/` 下是运行库（编译和运行都从这里找）
 
@@ -40,7 +40,7 @@ ssh root@<板子IP> "sh /root/vl_demo/start.sh"
 
 ## 性能
 
-问一句 1 秒内出答案；视觉编码一帧约 250ms，回答速度 44~46 token/s。NPU 占 2.3G 左右且多轮推理期间不增长；另外引擎要在系统内存里放 embed 表，会吃掉 0.7G 左右。详细数据见 [bench/perf.md](../bench/perf.md)。
+问一句 1 秒内出答案；视觉编码一帧约 250ms，回答速度 44~46 token/s。NPU 占 2.3G 左右且多轮推理期间不增长；另外引擎要在系统内存里放 embed 表，会吃掉 0.7G 左右。
 
 <details>
 <summary><b>出问题了看哪里</b></summary>

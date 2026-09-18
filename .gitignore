@@ -17,3 +17,12 @@ vl_engine.*
 
 # 网卡限速等内部工具不放仓库
 resume_push.py
+
+# 性能测试数据（bench/）留本地，不进仓库
+bench/
+
+# 原始模型 / 官方 demo 源码留本地，不进仓库（模型已传 GitHub Release）
+Qwen3tts/
+talker/
+rknn_Qwen3_ASR_demo/
+rknn_Qwen3_TTS_demo/

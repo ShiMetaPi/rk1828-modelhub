@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen3-TTS 语音合成</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    background: #1a1d27;
+    border-radius: 16px;
+    padding: 40px;
+    width: min(560px, 95vw);
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #fff;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 32px;
+  }
+  label {
+    font-size: 13px;
+    color: #aaa;
+    margin-bottom: 8px;
+    display: block;
+  }
+  textarea {
+    width: 100%;
+    height: 120px;
+    background: #252836;
+    border: 1px solid #33364a;
+    border-radius: 10px;
+    color: #e0e0e0;
+    font-size: 15px;
+    padding: 14px;
+    resize: none;
+    outline: none;
+    transition: border-color .2s;
+    font-family: inherit;
+  }
+  textarea:focus { border-color: #6366f1; }
+  input[type="text"], select {
+    width: 100%;
+    background: #252836;
+    border: 1px solid #33364a;
+    border-radius: 10px;
+    color: #e0e0e0;
+    font-size: 14px;
+    padding: 11px 14px;
+    outline: none;
+    transition: border-color .2s;
+    font-family: inherit;
+    margin-bottom: 18px;
+  }
+  input[type="text"]:focus, select:focus { border-color: #6366f1; }
+  .row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-top: 20px;
+  }
+  button {
+    background: #6366f1;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  button:hover { background: #5254cc; }
+  button:active { transform: scale(.97); }
+  button:disabled { background: #44465a; cursor: not-allowed; }
+  .audio-wrap {
+    margin-top: 24px;
+    display: none;
+  }
+  .audio-wrap.show { display: block; }
+  audio {
+    width: 100%;
+    height: 40px;
+    border-radius: 8px;
+  }
+  .hint {
+    font-size: 12px;
+    color: #555;
+    margin-top: 6px;
+  }
+  .status {
+    font-size: 12px;
+    color: #666;
+    margin-top: 12px;
+    min-height: 18px;
+  }
+  .status.err { color: #f87171; }
+  .status.ok  { color: #4ade80; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Qwen3-TTS 语音合成</h1>
+  <p class="subtitle">Qwen3-TTS 12Hz 1.7B · RKNN 加速</p>
+
+  <label>输入文本</label>
+  <textarea id="text" placeholder="输入要合成语音的文本，如：你好，欢迎使用语音合成 demo。"></textarea>
+
+  <label style="margin-top:20px">语气指令（可选）</label>
+  <input id="instruct" type="text" placeholder="如：用悲伤低沉、带哭腔的语气说。留空则自然朗读">
+
+  <label>音色（可选）</label>
+  <select id="speaker">
+    <option value="">默认（girl_base）</option>
+    <option value="serena">serena</option>
+    <option value="vivian">vivian</option>
+    <option value="uncle_fu">uncle_fu</option>
+    <option value="ryan">ryan</option>
+    <option value="aiden">aiden</option>
+    <option value="ono_anna">ono_anna</option>
+    <option value="sohee">sohee</option>
+    <option value="eric">eric（四川话）</option>
+    <option value="dylan">dylan（北京话）</option>
+  </select>
+
+  <div class="row">
+    <button id="btn">生成语音</button>
+  </div>
+
+  <div class="hint">生成完毕后自动播放；NPU 空闲时模型随页面加载</div>
+
+  <div class="audio-wrap" id="audioWrap">
+    <audio id="player" controls></audio>
+  </div>
+
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const btn   = document.getElementById("btn");
+const text  = document.getElementById("text");
+const instruct = document.getElementById("instruct");
+const speaker  = document.getElementById("speaker");
+const audioWrap = document.getElementById("audioWrap");
+const player   = document.getElementById("player");
+const status  = document.getElementById("status");
+
+let audioUrl = null;
+
+function setStatus(msg, ok=false, err=false) {
+  status.textContent = msg;
+  status.className = "status" + (ok ? " ok" : err ? " err" : "");
+}
+
+btn.addEventListener("click", async () => {
+  const t = text.value.trim();
+  const inst = instruct.value.trim();
+  const spk = speaker.value;
+  if (!t) { setStatus("请输入文本", err=true); return; }
+  btn.disabled = true;
+  setStatus("正在生成…");
+  try {
+    const r = await fetch("/api/speak", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ text: t, instruct: inst, speaker: spk }),
+    });
+    if (!r.ok) {
+      const j = await r.json();
+      setStatus(j.error || "生成失败", err=true);
+      return;
+    }
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    audioUrl = URL.createObjectURL(await r.blob());
+    player.src = audioUrl;
+    audioWrap.classList.add("show");
+    player.play().catch(()=>{});
+    setStatus("生成完毕", ok=true);
+  } catch(e) {
+    setStatus("网络错误: " + e.message, err=true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// pagehide：页面关闭时通知后端释放 NPU
+window.addEventListener("pageshow", () => fetch("/api/status"));
+window.addEventListener("pagehide", () => {
+  navigator.sendBeacon("/api/bye");
+});
+</script>
+</body>
+</html>

@@ -135,23 +135,45 @@ def sock_send(req: dict) -> dict:
 
 # ── NPU 生命周期管理（page-driven）──────────────────────────────────
 LAST_SEEN = [time.time()]
-KEEPALIVE_INTERVAL = 15
-RELEASE_AFTER = 75
+BYE_AT = [None]          # 页面关闭时刻；宽限期后整个服务退出
+SERVER = None            # 由 __main__ 赋值，供 keepalive 线程 shutdown
+KEEPALIVE_INTERVAL = 5
+RELEASE_AFTER = 75       # 空闲多久释放 NPU 引擎
+BYE_EXIT_AFTER = 10      # 页面关闭后多久退出服务（宽限期，防 F5 刷新误杀）
+SERVICE_EXIT_AFTER = 300 # 长时间无任何活动则退出（浏览器异常死掉的兜底）
 _engine_lock = threading.Lock()
 _active = 0            # 正在进行的合成请求数，>0 时不释放引擎（避免生成中途被停）
 _active_lock = threading.Lock()
 
+def _exit_service(reason):
+    """整个服务退出：释放 NPU + 停止 HTTP 循环（页面驱动，页面没了服务不留）。"""
+    print(f"[tts] {reason}，服务退出，可重新运行 start.sh", flush=True)
+    stop_engine()
+    if SERVER is not None:
+        SERVER.shutdown()
+    else:
+        os._exit(0)
+
 def _keepalive():
     while True:
         time.sleep(KEEPALIVE_INTERVAL)
+        now = time.time()
         with _engine_lock:
-            if time.time() - LAST_SEEN[0] > RELEASE_AFTER and _active == 0:
+            if _active > 0:
+                continue
+            if now - LAST_SEEN[0] > RELEASE_AFTER and _engine_alive():
                 stop_engine()
+            # 页面明确关闭 → 宽限后整体退出；长时间无活动 → 兜底退出
+            if (BYE_AT[0] is not None and now - BYE_AT[0] > BYE_EXIT_AFTER) \
+                    or now - LAST_SEEN[0] > SERVICE_EXIT_AFTER:
+                _exit_service("页面已关闭" if BYE_AT[0] is not None else "长时间无活动")
+                return
 
 threading.Thread(target=_keepalive, daemon=True).start()
 
 def touch():
     LAST_SEEN[0] = time.time()
+    BYE_AT[0] = None  # 页面回来了（刷新/重新打开），取消退出计划
 
 # ── HTTP 接口 ────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
@@ -234,6 +256,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif self.path == "/api/bye":
             stop_engine()
+            BYE_AT[0] = time.time()  # 宽限 10s 无页面回来则整个服务退出
             self.send_json({"status": "released"})
 
         else:
@@ -256,6 +279,7 @@ if __name__ == "__main__":
     # 避免启动脚本被 ~40s 的模型加载阻塞。
     print(f"[tts] listening :{PORT}  model_dir={TTS_MODEL_DIR}", flush=True)
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    SERVER = server  # 供 keepalive 线程在页面关闭后 shutdown
 
     # 服务就绪后自动在板子桌面打开浏览器（DISPLAY 默认 :0，桌面经 x11vnc/noVNC 呈现）
     def _open_browser():
@@ -274,3 +298,4 @@ if __name__ == "__main__":
 
     threading.Thread(target=_open_browser, daemon=True).start()
     server.serve_forever()
+    print("[tts] 已退出", flush=True)

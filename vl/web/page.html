@@ -166,6 +166,9 @@ async function poll() {
 }
 poll();
 setInterval(poll, 3000);
+
+// 页面关闭时通知后端：释放引擎并退出服务（重新运行 start.sh 即可）
+window.addEventListener('pagehide', () => { navigator.sendBeacon('/bye'); });
 </script>
 </body>
 </html>

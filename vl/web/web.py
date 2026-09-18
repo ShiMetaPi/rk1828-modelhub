@@ -9,6 +9,7 @@ import json
 import os
 import queue
 import socket
+import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,13 +20,50 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LAST = "/tmp/vl_web.last"     # 页面心跳文件：watch.sh 靠它决定引擎拉起/释放
 WATCH_MSG = "/tmp/vl_watch.msg"   # watch.sh 拒启原因（NPU 被占等），透出到页面
 
+# ---- 服务生命周期（与 tts demo 一致）：页面关闭 → 释放引擎 → 整个服务退出 ----
+LAST_SEEN = [time.time()]
+BYE_AT = [None]           # 页面关闭时刻；宽限期后整个服务退出
+SERVER = None             # 由 main() 赋值，供退出线程 shutdown
+BYE_EXIT_AFTER = 10       # 页面关闭宽限（防 F5 刷新误杀）
+SERVICE_EXIT_AFTER = 300  # 长时间无活动兜底（浏览器异常死掉）
+
 
 def touch_last() -> None:
-    """任何页面请求（含 MJPEG 流帧）都算页面活着"""
+    """真实页面请求（文档/接口）都算页面活着：刷新/重开会取消退出计划"""
+    BYE_AT[0] = None
+    LAST_SEEN[0] = time.time()
     try:
         os.utime(LAST, None)
     except OSError:
         open(LAST, "w").close()
+
+
+def stream_touch() -> None:
+    """MJPEG 流线程的心跳：页面已发 bye 后，残留的流连接不再算页面活着
+    （否则流线程每秒空摸一次心跳，会把退出计划和引擎释放无限拖住）"""
+    if BYE_AT[0] is None:
+        touch_last()
+
+
+def _exit_service(reason: str) -> None:
+    """整个服务退出：杀引擎 + 杀 watch 守护 + 停 HTTP 循环（页面驱动，页面没了服务不留）"""
+    print("[web] %s，服务退出，可重新运行 start.sh" % reason, flush=True)
+    subprocess.run(["pkill", "-f", "[v]l_demo/watch.sh"], capture_output=True)
+    subprocess.run(["pkill", "-f", "[v]l_demo/vl_engine"], capture_output=True)
+    if SERVER is not None:
+        SERVER.shutdown()
+    else:
+        os._exit(0)
+
+
+def _keepalive() -> None:
+    while True:
+        time.sleep(5)
+        now = time.time()
+        if (BYE_AT[0] is not None and now - BYE_AT[0] > BYE_EXIT_AFTER) \
+                or now - LAST_SEEN[0] > SERVICE_EXIT_AFTER:
+            _exit_service("页面已关闭" if BYE_AT[0] is not None else "长时间无活动")
+            return
 
 # ---- 引擎连接与事件分发 ----------------------------------------------------
 engine_alive = False        # socket 是否连着
@@ -171,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
             last = b""
             idle = 0
             while True:
-                touch_last()   # 流还连着 = 页面还开着
+                stream_touch()   # 流还连着 = 页面还开着（bye 后的残留流除外）
                 try:
                     jpg = q.get(timeout=1.0)
                     idle = 0
@@ -200,6 +238,17 @@ class Handler(BaseHTTPRequestHandler):
         touch_last()
         if self.path == "/ask":
             self.do_ask()
+        elif self.path == "/bye":
+            # pagehide beacon：心跳文件时间回拨（watch.sh 立刻视为页面已关，
+            # 不会再拉引擎），杀引擎释放 NPU，宽限 10s 无页面回来则整个服务退出
+            try:
+                os.utime(LAST, (0, 0))
+            except OSError:
+                pass
+            subprocess.run(["pkill", "-f", "[v]l_demo/vl_engine"],
+                           capture_output=True)
+            BYE_AT[0] = time.time()
+            self._send(200, b'{"ok":true}', "application/json")
         elif self.path == "/reset":
             ok = engine_send('{"cmd":"reset"}')
             self._send(200 if ok else 503,
@@ -256,12 +305,33 @@ class Handler(BaseHTTPRequestHandler):
                 qid_queues.pop(qid, None)
 
 
+def _open_browser() -> None:
+    """服务就绪后在板子桌面自动打开浏览器（start.sh 不用手动点链接）"""
+    time.sleep(2)
+    try:
+        env = dict(os.environ)
+        env.setdefault("DISPLAY", ":0")
+        subprocess.Popen(
+            ["chromium", "--no-sandbox", "--disable-gpu", "--no-first-run",
+             "--new-window", "http://127.0.0.1:%d" % PORT],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
+        print("[web] 已打开浏览器 http://127.0.0.1:%d" % PORT, flush=True)
+    except Exception as e:
+        print("[web] 自动打开浏览器失败: %s" % e, flush=True)
+
+
 def main() -> None:
+    global SERVER
     touch_last()   # 确保 /tmp/vl_web.last 存在（watch.sh 依赖）
     threading.Thread(target=reader_loop, daemon=True).start()
+    threading.Thread(target=_keepalive, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    SERVER = srv   # 供 keepalive 线程在页面关闭后 shutdown
     print("[web] http://0.0.0.0:%d" % PORT, flush=True)
+    threading.Thread(target=_open_browser, daemon=True).start()
     srv.serve_forever()
+    print("[web] 已退出，可重新运行 start.sh", flush=True)
 
 
 if __name__ == "__main__":

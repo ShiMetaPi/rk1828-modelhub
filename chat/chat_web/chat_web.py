@@ -34,6 +34,10 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# ---- 服务生命周期（与 tts demo 一致）：页面关闭 → 释放模型 → 整个服务退出 ----
+BYE_EXIT_AFTER = 10       # pagehide beacon 后宽限几秒才退出（防 F5 刷新误杀）
+SERVICE_EXIT_AFTER = 300  # 心跳消失多久整个服务退出（浏览器异常死掉兜底）
+
 # ---- 配置 ----
 W4_DIR = "/root/rknn_MiniCPM5_2B_demo/model"
 W8_DIR = "/root/w8a16"
@@ -73,6 +77,8 @@ state_lock = threading.Lock()
 gen_lock = threading.Lock()   # 板子单槽，一次只生成一条
 ensure_lock = threading.Lock()   # 同时只允许一个拉起/释放流程
 last_seen = [0.0]      # 最近一次页面心跳（monotonic）
+bye_at = [None]        # pagehide beacon 时刻；宽限后整个服务退出
+WEB_SRV = None         # 由 main() 赋值，供退出线程 shutdown
 
 history = []           # [{"role","content"}] 最近几轮原文（旧内容进摘要管线）
 hist_tokens = 0        # 上一轮请求的 prompt+completion 估算值
@@ -98,6 +104,7 @@ def set_phase(phase, quant=None, detail=""):
 
 def heartbeat():
     last_seen[0] = time.monotonic()
+    bye_at[0] = None   # 页面回来了（刷新/重开），取消退出计划
 
 
 def running_quant():
@@ -183,13 +190,30 @@ def ensure_server(quant):
         return False
 
 
+def exit_web(reason):
+    """整个服务退出：释放 NPU + 停 HTTP 循环（页面驱动，页面没了服务不留）"""
+    print("[chat_web] %s，服务退出，可重新运行 start.sh" % reason, flush=True)
+    run("pkill -f 'rkllm3-serv[e]r' || true")
+    if WEB_SRV is not None:
+        WEB_SRV.shutdown()
+    else:
+        os._exit(0)
+
+
 def lifecycle_monitor():
-    """兜底释放：页面没了（没发 beacon 也没心跳）75 秒后自动释放 NPU"""
+    """页面关闭（beacon 宽限后）/心跳消失：释放模型；长时间无活动整个服务退出"""
     while True:
         time.sleep(5)
+        now = time.monotonic()
         with state_lock:
             phase = state["phase"]
-        if phase == "ready" and time.monotonic() - last_seen[0] > GRACE_SECS:
+        if bye_at[0] is not None and now - bye_at[0] > BYE_EXIT_AFTER:
+            exit_web("页面已关闭")
+            return
+        if last_seen[0] and now - last_seen[0] > SERVICE_EXIT_AFTER:
+            exit_web("长时间无活动")
+            return
+        if phase == "ready" and last_seen[0] and now - last_seen[0] > GRACE_SECS:
             print("[chat_web] 页面心跳消失 %ds，释放模型" % GRACE_SECS, flush=True)
             release("页面已关闭，模型已释放；重新打开本页自动拉起")
 
@@ -535,8 +559,10 @@ class Handler(BaseHTTPRequestHandler):
                     pass
 
         elif self.path == "/api/bye":
-            # pagehide beacon：正常关页立即释放 NPU（75 秒兜底管崩溃场景）
+            # pagehide beacon：正常关页立即释放 NPU（75 秒兜底管崩溃场景），
+            # 宽限 10s 无页面回来则整个服务退出（重新运行 start.sh 即可）
             heartbeat()
+            bye_at[0] = time.monotonic()
             threading.Thread(
                 target=lambda: (time.sleep(0.5), release("页面已关闭，模型已释放；重新打开本页自动拉起")),
                 daemon=True).start()
@@ -581,13 +607,37 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
 
+def _open_browser():
+    """服务就绪后在板子桌面自动打开浏览器（start.sh 不用手动点链接）。
+    CHAT_WEB_NO_BROWSER=1 跳过（ssh 远程无界面测试用）"""
+    if os.environ.get("CHAT_WEB_NO_BROWSER") == "1":
+        return
+    time.sleep(2)
+    try:
+        env = dict(os.environ)
+        env.setdefault("DISPLAY", ":0")
+        subprocess.Popen(
+            ["chromium", "--no-sandbox", "--disable-gpu", "--no-first-run",
+             "--new-window", "http://127.0.0.1:%d" % WEB_PORT],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
+        print("[chat_web] 已打开浏览器 http://127.0.0.1:%d" % WEB_PORT, flush=True)
+    except Exception as e:
+        print("[chat_web] 自动打开浏览器失败: %s" % e, flush=True)
+
+
 def main():
-    last_seen[0] = 0.0   # 启动即无页面：不拉服务，等第一个心跳
+    global WEB_SRV
+    # 心跳从启动时刻起算：300s 内页面没来过才兜底退出（模型仍由首个心跳拉起）
+    last_seen[0] = time.monotonic()
     threading.Thread(target=lifecycle_monitor, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", WEB_PORT), Handler)
-    print("[chat_web] http://0.0.0.0:%d（页面驱动：打开页面自动拉模型，关掉自动释放）"
+    WEB_SRV = srv   # 供 lifecycle_monitor 在页面关闭后 shutdown
+    print("[chat_web] http://0.0.0.0:%d（页面驱动：打开页面自动拉模型，关掉自动释放并退出）"
           % WEB_PORT, flush=True)
+    threading.Thread(target=_open_browser, daemon=True).start()
     srv.serve_forever()
+    print("[chat_web] 已退出，可重新运行 start.sh", flush=True)
 
 
 if __name__ == "__main__":

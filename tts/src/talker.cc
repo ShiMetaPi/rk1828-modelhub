@@ -25,6 +25,7 @@ typedef struct
 {
     TalkerCallback output_callback;
     void *output_userdata;
+    std::string model_dir;   // 自定义音色（声音克隆 .npy）挂在 {model_dir}/voices/ 下
 
     tokenizers::Tokenizer* tokenizer;
     struct embedding_info text_embed_info;
@@ -742,6 +743,50 @@ std::vector<float16> get_projected_text_embeds(Qwen3TTSTalkerContext* ctx, const
 }
 
 // =========================
+// load_speaker_embed_npy：运行时加载自定义音色（声音克隆 embedding）
+// 文件是 numpy .npy v1（dtype '<f4'，恰好 QWEN3_TTS_EMBED_DIM 个 float），
+// 由 PC/服务器侧提取工具从参考音频离线生成，放在 {model_dir}/voices/{名字}.npy。
+// 板上不做音频→向量提取（官方 demo 也没做，见原 TODO），只消费向量。
+// =========================
+static bool load_speaker_embed_npy(const std::string& path, std::vector<float>& out) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+
+    f.seekg(0, std::ios::end);
+    std::streamoff file_size = f.tellg();
+    f.seekg(0, std::ios::beg);
+
+    char prefix[10];
+    if (file_size < 11 || !f.read(prefix, sizeof(prefix))) return false;
+    if (memcmp(prefix, "\x93NUMPY", 6) != 0) {
+        LOGE("load_speaker_embed_npy: %s 不是 npy 文件", path.c_str());
+        return false;
+    }
+    // v1 布局: [0..5]=magic [6]=主版本 [7]=次版本 [8..9]=header 长度(LE u16)
+    if ((uint8_t)prefix[6] != 1) {
+        LOGE("load_speaker_embed_npy: %s 不支持的 npy 版本 %d", path.c_str(), (int)(uint8_t)prefix[6]);
+        return false;
+    }
+    int header_len = (uint8_t)prefix[8] | ((uint8_t)prefix[9] << 8);
+    std::streamoff data_start = 10 + (std::streamoff)header_len;
+    if (file_size - data_start != (std::streamoff)(QWEN3_TTS_EMBED_DIM * (int)sizeof(float))) {
+        LOGE("load_speaker_embed_npy: %s 数据应恰好是 %d 个 float32", path.c_str(), QWEN3_TTS_EMBED_DIM);
+        return false;
+    }
+
+    std::string dict(header_len, '\0');
+    if (!f.read(&dict[0], header_len)) return false;
+    if (dict.find("<f4") == std::string::npos && dict.find("|f4") == std::string::npos) {
+        LOGE("load_speaker_embed_npy: %s dtype 不是 float32（header: %.60s）", path.c_str(), dict.c_str());
+        return false;
+    }
+
+    out.resize(QWEN3_TTS_EMBED_DIM);
+    f.read(reinterpret_cast<char*>(out.data()), QWEN3_TTS_EMBED_DIM * sizeof(float));
+    return !f.fail();
+}
+
+// =========================
 // process_prefill_embedding：构造当前请求的一次性 prefill 输入并直接启动生成
 static int process_prefill_embedding(
     Qwen3TTSTalkerContext* module_ctx,
@@ -812,6 +857,16 @@ static int process_prefill_embedding(
             for (int ei = 0; ei < dim; ei++) {
                 voice_clone_spk_embeds.push_back(fp32_to_fp16(speaker_embed_fp[ei]));
             }
+        } else if (ref_speaker_lower.find_first_of("/\\") == std::string::npos &&
+                   ref_speaker_lower.find("..") == std::string::npos) {
+            // 自定义音色（声音克隆）：voices/{名字}.npy 运行时加载，找不到就静默落回 spk_id
+            std::vector<float> spk_fp;
+            if (load_speaker_embed_npy(module_ctx->model_dir + "/voices/" + ref_speaker_lower + ".npy", spk_fp)) {
+                for (int ei = 0; ei < dim; ei++) {
+                    voice_clone_spk_embeds.push_back(fp32_to_fp16(spk_fp[ei]));
+                }
+                LOGI("Loaded custom speaker embed: %s", ref_speaker_lower.c_str());
+            }
         }
     }
 
@@ -831,7 +886,7 @@ static int process_prefill_embedding(
             }
         }
     } else {
-        // TODO: 自定义声色 ref_audio ref_text
+        // 声音克隆：向量由外部离线提取（tools/extract_spk_embed.py），这里直接注入
         speaker_embed = voice_clone_spk_embeds;
         is_config_speaker = false;
     }
@@ -1014,6 +1069,7 @@ static int Qwen3TTSTalker_OnModuleInit(Qwen3TTSTalkerContext* module_ctx, const 
 
     module_ctx->output_callback = config.callback;
     module_ctx->output_userdata = config.userdata;
+    module_ctx->model_dir = config.model_dir;
 
     const std::string& model_dir = config.model_dir;
     std::string tokenizer_json = Qwen3TTSTalker_LoadJsonFileAsString(model_dir + "/tokenizer.json");

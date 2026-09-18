@@ -13,6 +13,8 @@
 //   {"ev": "pong"}
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
@@ -30,10 +32,12 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
 #include "speech_decoder.h"
+#include "spk_encoder.h"
 #include "talker.h"
 
 namespace {
@@ -248,8 +252,22 @@ struct Msg {
     std::string text;
     std::string instruct;
     std::string speaker;
+    std::string pcm;    // extract：24kHz mono float32 PCM 文件路径
+    std::string name;   // extract：音色名（存 voices/{name}.npy）
     int qid = 0;
 };
+
+// 音色名合法（小写字母/数字/_/-，1~24 位）且不含路径字符
+static bool valid_voice_name(const std::string& raw, std::string& out) {
+    std::string s = raw;
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (s.empty() || s.size() > 24) return false;
+    for (char c : s) {
+        if (!(isalnum((unsigned char)c) || c == '_' || c == '-')) return false;
+    }
+    out = s;
+    return true;
+}
 
 static Msg ParseMsg(const std::string& line) {
     Msg m;
@@ -278,6 +296,18 @@ static Msg ParseMsg(const std::string& line) {
         if (q != std::string::npos && r != std::string::npos)
             m.speaker = line.substr(q + 1, r - q - 1);
     }
+    if ((p = line.find("\"pcm\"")) != std::string::npos) {
+        size_t q = line.find("\"", p + 5);
+        size_t r = line.find("\"", q + 1);
+        if (q != std::string::npos && r != std::string::npos)
+            m.pcm = line.substr(q + 1, r - q - 1);
+    }
+    if ((p = line.find("\"name\"")) != std::string::npos) {
+        size_t q = line.find("\"", p + 6);
+        size_t r = line.find("\"", q + 1);
+        if (q != std::string::npos && r != std::string::npos)
+            m.name = line.substr(q + 1, r - q - 1);
+    }
     if ((p = line.find("\"qid\"")) != std::string::npos) {
         // "qid" 是 5 个字符，其后是冒号 ':'，数字从 p+6 开始
         m.qid = atoi(line.c_str() + p + 6);
@@ -299,6 +329,12 @@ static std::string JsonError(int qid, const std::string& msg) {
 
 static std::string JsonPong() {
     return std::string("{\"ev\":\"pong\"}\n");
+}
+
+static std::string JsonVoiceSaved(int qid, const std::string& name) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "{\"ev\":\"done\",\"qid\":%d,\"name\":\"%s\"}\n", qid, name.c_str());
+    return std::string(buf);
 }
 
 }  // namespace
@@ -333,6 +369,14 @@ int main(int argc, char** argv) {
             return -1;
         }
         fprintf(stderr, "[tts] talker ready\n");
+    }
+
+    // 板端声音克隆提取器（文件缺失则降级不可用，不影响 TTS 主流程）
+    SpkEncoder spk_encoder;
+    if (spk_encoder.Init(model_dir) == 0) {
+        fprintf(stderr, "[tts] spk encoder ready（板端提取可用）\n");
+    } else {
+        fprintf(stderr, "[tts] spk encoder 不可用，extract 命令会报错（不影响合成）\n");
     }
 
     // Unix socket
@@ -397,9 +441,11 @@ int main(int argc, char** argv) {
                     request.language = "auto";
                     request.instruct = m.instruct;
                     if (!m.speaker.empty()) {
-                        // 指定 9 个预置音色之一（serena/vivian/uncle_fu/ryan/...）
+                        // 音色名同时走两个字段，talker 内按 克隆表→voices/*.npy→spk_id 顺序解析：
+                        // 预置 9 音色（serena/vivian/...）落在 spk_id，克隆音色（girl_base、
+                        // 上传的自定义 .npy）走 voice_clone 路径
                         request.speaker = m.speaker;
-                        request.ref_speaker = "";
+                        request.ref_speaker = m.speaker;
                     } else {
                         request.ref_speaker = "girl_base";
                     }
@@ -434,6 +480,65 @@ int main(int argc, char** argv) {
                         : JsonDone(m.qid, state.output_path);
                     fprintf(stderr, "[tts] speak done: failed=%d samples=%zu\n",
                             state.failed, state.audio_buffer.size());
+                    ::send(cli, resp.c_str(), resp.size(), 0);
+                } else if (m.cmd == "extract") {
+                    // 板端声音克隆：PCM(24kHz mono float32 文件) → 2048 维向量 → voices/{name}.npy
+                    std::string name;
+                    if (!spk_encoder.Ready()) {
+                        std::string err = JsonError(m.qid, "spk encoder not ready（缺 spk_embed.rknn，见 tools/HANDOFF_export.md）");
+                        ::send(cli, err.c_str(), err.size(), 0);
+                        continue;
+                    }
+                    if (!valid_voice_name(m.name, name)) {
+                        std::string err = JsonError(m.qid, "bad voice name（小写字母/数字/_/-，1~24 位）");
+                        ::send(cli, err.c_str(), err.size(), 0);
+                        continue;
+                    }
+
+                    // 读 PCM 文件（web 层落盘的 24kHz mono float32 原始数据）
+                    std::vector<float> pcm;
+                    {
+                        std::ifstream pf(m.pcm, std::ios::binary);
+                        if (!pf) {
+                            std::string err = JsonError(m.qid, "pcm file not found");
+                            ::send(cli, err.c_str(), err.size(), 0);
+                            continue;
+                        }
+                        pf.seekg(0, std::ios::end);
+                        size_t bytes = (size_t)pf.tellg();
+                        if (bytes < 4 || bytes % 4 != 0 || bytes / 4 < kSampleRate) {  // 至少 1 秒
+                            std::string err = JsonError(m.qid, "pcm file bad（float32 且至少 1 秒）");
+                            ::send(cli, err.c_str(), err.size(), 0);
+                            continue;
+                        }
+                        pcm.resize(bytes / 4);
+                        pf.seekg(0, std::ios::beg);
+                        pf.read(reinterpret_cast<char*>(pcm.data()), bytes);
+                    }
+
+                    float embed[2048];
+                    if (spk_encoder.Extract(pcm.data(), (int)pcm.size(), embed) != 0) {
+                        std::string err = JsonError(m.qid, "extract failed");
+                        ::send(cli, err.c_str(), err.size(), 0);
+                        continue;
+                    }
+
+                    std::string voices_dir = std::string(model_dir) + "/voices";
+                    ::mkdir(voices_dir.c_str(), 0755);  // 已存在则忽略
+                    std::string npy_path = voices_dir + "/" + name + ".npy";
+                    if (SpkEncoder_SaveNpy(npy_path, embed, 2048) != 0) {
+                        std::string err = JsonError(m.qid, "save npy failed");
+                        ::send(cli, err.c_str(), err.size(), 0);
+                        continue;
+                    }
+                    fprintf(stderr, "[tts] 板端提取音色 %s 完成（|v|=%.2f）\n",
+                            name.c_str(),
+                            [&embed]() {
+                                float s = 0.f;
+                                for (int i = 0; i < 2048; ++i) s += embed[i] * embed[i];
+                                return sqrtf(s);
+                            }());
+                    std::string resp = JsonVoiceSaved(m.qid, name);
                     ::send(cli, resp.c_str(), resp.size(), 0);
                 } else if (m.cmd == "ping") {
                     std::string pong = JsonPong();

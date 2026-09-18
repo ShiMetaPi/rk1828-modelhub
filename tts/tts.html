@@ -68,6 +68,36 @@
     margin-bottom: 18px;
   }
   input[type="text"]:focus, select:focus { border-color: #6366f1; }
+  .voice-box {
+    margin-top: 14px;
+    padding: 14px;
+    background: #20232f;
+    border: 1px dashed #3a3d52;
+    border-radius: 10px;
+  }
+  .vb-title {
+    font-size: 12px;
+    color: #8a8da5;
+    margin-bottom: 10px;
+    line-height: 1.6;
+  }
+  .voice-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .voice-row input[type="text"] { flex: 1; min-width: 130px; margin-bottom: 0; }
+  .voice-row input[type="file"] { font-size: 12px; color: #aaa; max-width: 210px; }
+  button.ghost {
+    background: transparent;
+    border: 1px solid #4a4d66;
+    color: #c3c6dd;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  button.ghost:hover { background: #262a3a; }
+  button.danger { border-color: #7a3d3d; color: #f8a0a0; }
   .row {
     display: flex;
     gap: 12px;
@@ -124,18 +154,23 @@
   <input id="instruct" type="text" placeholder="如：用悲伤低沉、带哭腔的语气说。留空则自然朗读">
 
   <label>音色（可选）</label>
-  <select id="speaker">
-    <option value="">默认（girl_base）</option>
-    <option value="serena">serena</option>
-    <option value="vivian">vivian</option>
-    <option value="uncle_fu">uncle_fu</option>
-    <option value="ryan">ryan</option>
-    <option value="aiden">aiden</option>
-    <option value="ono_anna">ono_anna</option>
-    <option value="sohee">sohee</option>
-    <option value="eric">eric（四川话）</option>
-    <option value="dylan">dylan（北京话）</option>
-  </select>
+  <select id="speaker"></select>
+  <button id="delVoiceBtn" class="ghost danger" style="display:none; margin-top:10px;">删除当前自定义音色</button>
+
+  <div class="voice-box">
+    <div class="vb-title">声音模仿（板上完成）：选一段 5~10 秒干净人声音频，或直接录音，提取成你的音色</div>
+    <div class="voice-row">
+      <input id="voiceAudio" type="file" accept="audio/*">
+      <button id="recBtn" class="ghost">录音</button>
+      <input id="voiceName" type="text" placeholder="音色名，如 myvoice">
+      <button id="extractBtn" class="ghost">提取音色</button>
+    </div>
+    <div class="vb-title" style="margin-top:10px">已有 .npy 音色文件（tools/extract_spk_embed.py 生成）？直接上传：</div>
+    <div class="voice-row">
+      <input id="voiceFile" type="file" accept=".npy">
+      <button id="uploadBtn" class="ghost">上传 .npy</button>
+    </div>
+  </div>
 
   <div class="row">
     <button id="btn" disabled>生成语音</button>
@@ -158,10 +193,176 @@ const speaker  = document.getElementById("speaker");
 const audioWrap = document.getElementById("audioWrap");
 const player   = document.getElementById("player");
 const status  = document.getElementById("status");
+const voiceFile = document.getElementById("voiceFile");
+const voiceName = document.getElementById("voiceName");
+const uploadBtn = document.getElementById("uploadBtn");
+const delVoiceBtn = document.getElementById("delVoiceBtn");
 
 let audioUrl = null;
 let ready = false;       // 引擎是否就绪
 let generating = false;  // 是否正在合成
+let customNames = [];    // 已上传的自定义音色名
+
+// ── 音色列表（预置 / 内置克隆 / 我的音色）──────────────────────
+function updateDelBtn() {
+  delVoiceBtn.style.display = customNames.includes(speaker.value) ? "" : "none";
+}
+
+async function loadVoices(selectName) {
+  const keep = selectName || speaker.value;
+  try {
+    const r = await fetch("/api/voices");
+    const j = await r.json();
+    speaker.innerHTML = "";
+    const mk = v => { const o = document.createElement("option"); o.value = v.name; o.textContent = v.label; return o; };
+    const def = document.createElement("option");
+    def.value = ""; def.textContent = "默认（girl_base）";
+    speaker.appendChild(def);
+    const g1 = document.createElement("optgroup"); g1.label = "预置音色";
+    j.preset.forEach(v => g1.appendChild(mk(v)));
+    speaker.appendChild(g1);
+    const g0 = document.createElement("optgroup"); g0.label = "克隆音色";
+    j.builtin_clone.filter(v => v.name !== "girl_base").forEach(v => g0.appendChild(mk(v)));
+    speaker.appendChild(g0);
+    customNames = j.custom.map(v => v.name);
+    const g2 = document.createElement("optgroup"); g2.label = "我的音色（提取/上传）";
+    if (customNames.length === 0) {
+      const o = document.createElement("option");
+      o.value = ""; o.disabled = true; o.textContent = "（暂无，用下方录音或选文件提取）";
+      g2.appendChild(o);
+    } else {
+      j.custom.forEach(v => g2.appendChild(mk(v)));
+    }
+    speaker.appendChild(g2);
+    speaker.value = keep;
+    if (speaker.value !== keep) speaker.value = "";  // 原选中项已被删
+    updateDelBtn();
+  } catch (e) { /* 服务未起时保持空下拉 */ }
+}
+
+uploadBtn.addEventListener("click", async () => {
+  const f = voiceFile.files[0];
+  const name = voiceName.value.trim().toLowerCase();
+  if (!f) { setStatus("先选择 .npy 音色文件", err=true); return; }
+  if (!/^[a-z0-9_\-]{1,24}$/.test(name)) { setStatus("音色名只能小写字母/数字/_/-，1~24 位", err=true); return; }
+  uploadBtn.disabled = true;
+  setStatus("上传中…");
+  try {
+    const r = await fetch("/api/voice/upload?name=" + encodeURIComponent(name),
+                          { method: "POST", body: await f.arrayBuffer() });
+    const j = await r.json();
+    if (!r.ok) { setStatus(j.error || "上传失败", err=true); return; }
+    await loadVoices(name);   // 上传完直接选中
+    voiceFile.value = "";
+    voiceName.value = "";
+    setStatus("音色 " + name + " 已添加，输入文本试试像不像", ok=true);
+  } catch (e) {
+    setStatus("上传失败: " + e.message, err=true);
+  } finally {
+    uploadBtn.disabled = false;
+  }
+});
+
+// ── 板端提取：音频文件 / 录音 → 24kHz mono float32 PCM → /api/voice/extract ──
+const voiceAudio = document.getElementById("voiceAudio");
+const recBtn     = document.getElementById("recBtn");
+const extractBtn = document.getElementById("extractBtn");
+let recBlob = null, recorder = null, recTimer = null;
+
+// 浏览器里解码任意音频（wav/mp3/m4a/webm…）并重采样成 24kHz mono Float32
+async function audioToPcm24k(blob) {
+  const buf = await blob.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let decoded;
+  try {
+    decoded = await ctx.decodeAudioData(buf);
+  } finally {
+    ctx.close();
+  }
+  if (decoded.duration < 3)
+    throw new Error("音频不足 3 秒（建议 5~10 秒）");
+  const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * 24000), 24000);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const rendered = await off.startRendering();
+  return rendered.getChannelData(0);
+}
+
+recBtn.addEventListener("click", async () => {
+  if (recorder) { recorder.stop(); return; }  // 录音中再点一次 = 结束
+  if (!navigator.mediaDevices || !window.isSecureContext) {
+    setStatus("此环境不允许录音（需 localhost 或 https）：请改用「选音频文件」", err=true);
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      recBlob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      recorder = null;
+      clearTimeout(recTimer);
+      recBtn.textContent = "重新录音";
+      setStatus("录音完成，点「提取音色」", ok=true);
+    };
+    recorder.start();
+    recBtn.textContent = "停止录音";
+    recTimer = setTimeout(() => { if (recorder) recorder.stop(); }, 12000);  // 最长 12s
+  } catch (e) {
+    recorder = null;
+    setStatus("录音失败: " + e.message, err=true);
+  }
+});
+
+extractBtn.addEventListener("click", async () => {
+  const name = voiceName.value.trim().toLowerCase();
+  if (!/^[a-z0-9_\-]{1,24}$/.test(name)) { setStatus("音色名只能小写字母/数字/_/-，1~24 位", err=true); return; }
+  const blob = recBlob || voiceAudio.files[0] || null;
+  if (!blob) { setStatus("先选音频文件或录一段音", err=true); return; }
+  extractBtn.disabled = true;
+  setStatus("板上提取音色中…");
+  try {
+    let pcm = await audioToPcm24k(blob);
+    if (pcm.length > 240000) pcm = pcm.subarray(0, 240000);  // 引擎只取前 10 秒
+    const r = await fetch("/api/voice/extract?name=" + encodeURIComponent(name),
+                           { method: "POST", body: pcm.buffer });
+    const j = await r.json();
+    if (!r.ok) { setStatus(j.error || "提取失败", err=true); return; }
+    await loadVoices(name);
+    recBlob = null; voiceAudio.value = ""; voiceName.value = "";
+    recBtn.textContent = "录音";
+    setStatus("音色 " + name + " 已生成，输入文本试试像不像", ok=true);
+  } catch (e) {
+    setStatus("提取失败: " + e.message, err=true);
+  } finally {
+    extractBtn.disabled = false;
+  }
+});
+
+delVoiceBtn.addEventListener("click", async () => {
+  const name = speaker.value;
+  if (!name || !customNames.includes(name)) return;
+  if (!confirm("删除音色 " + name + "？")) return;
+  try {
+    const r = await fetch("/api/voice/delete", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name }),
+    });
+    const j = await r.json();
+    if (!r.ok) { setStatus(j.error || "删除失败", err=true); return; }
+    await loadVoices();
+    setStatus("已删除 " + name, ok=true);
+  } catch (e) {
+    setStatus("删除失败: " + e.message, err=true);
+  }
+});
+
+speaker.addEventListener("change", updateDelBtn);
 
 function setStatus(msg, ok=false, err=false) {
   status.textContent = msg;
@@ -178,7 +379,8 @@ async function pollStatus() {
       ready = true;
       btn.disabled = false;
       setStatus("模型已就绪，可以生成", ok=true);
-      return;  // 就绪后停止轮询（不再 touch，交给 keepalive 自动释放 NPU）
+      setTimeout(heartbeat, 5000);  // 就绪后转慢心跳：页面开着服务不退
+      return;
     }
     ready = false;
     btn.disabled = true;
@@ -223,10 +425,27 @@ btn.addEventListener("click", async () => {
   }
 });
 
+// 就绪后的慢心跳（5s）：
+//   ① 页面开着 → 服务/引擎一直活着（关页才释放 NPU 并退出）
+//   ② 多开了标签页时，关掉其中一个不再误杀服务（另一页的心跳会取消退出）
+//   ③ 服务真退出了 → 给明确提示，而不是点按钮没反应
+async function heartbeat() {
+  if (generating) { setTimeout(heartbeat, 5000); return; }
+  try {
+    await fetch("/api/status");
+    setTimeout(heartbeat, 5000);
+  } catch (e) {
+    ready = false;
+    btn.disabled = true;
+    setStatus("服务已退出，请重新运行 start.sh 后刷新页面", err=true);
+  }
+}
+
 // 页面打开即开始加载模型 + 轮询状态
 window.addEventListener("pageshow", () => {
   btn.disabled = true;
   setStatus("正在加载模型…");
+  loadVoices();
   pollStatus();
 });
 

@@ -26,3 +26,8 @@ Qwen3tts/
 talker/
 rknn_Qwen3_ASR_demo/
 rknn_Qwen3_TTS_demo/
+spk_embed/
+
+# 语音样本 / 合成产物（含个人声音数据，不进公开仓库）
+/*.wav
+/*.mp3

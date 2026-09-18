@@ -13,11 +13,12 @@ include_directories(
     ${SDK_INCLUDE}
 )
 
-# 源文件（官方 talker/speech_decoder + socket server）
+# 源文件（官方 talker/speech_decoder + 声音克隆提取器 + socket server）
 set(SRCS
     src/main.cpp
     src/talker.cc
     src/speech_decoder.cc
+    src/spk_encoder.cc
 )
 
 add_executable(tts_engine ${SRCS})

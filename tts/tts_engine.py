@@ -9,11 +9,13 @@ TTS Python 包装：启动 C++ tts_engine 进程，暴露 HTTP 接口。
 """
 import json
 import os
+import re
 import socket
 import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 # ── 配置 ──────────────────────────────────────────────────────────────
 TTS_MODEL_DIR = os.environ.get("TTS_MODEL_DIR", "/userdata/models/qwen3-tts")
@@ -21,6 +23,7 @@ TTS_BIN       = os.environ.get("TTS_BIN", "/root/tts_demo/tts_engine")
 TTS_SOCK      = os.environ.get("TTS_SOCK", "/tmp/tts_engine.sock")
 OUTPUT_DIR    = "/tmp"
 PORT          = 8088
+VOICES_DIR    = os.path.join(TTS_MODEL_DIR, "voices")  # 自定义克隆音色（.npy）
 
 # ── C++ 引擎管理（pgrep 检测存活）──────────────────────────────
 _engine_proc = None  # module-level 防止 GC 回收 Popen（会导致 SIGPIPE 杀子进程）
@@ -175,6 +178,52 @@ def touch():
     LAST_SEEN[0] = time.time()
     BYE_AT[0] = None  # 页面回来了（刷新/重新打开），取消退出计划
 
+# ── 音色管理（预置 / 内置克隆 / 上传的自定义克隆）──────────────────
+# 内置克隆音色：编译进 tts_engine 二进制的向量表（qwen3tts_speaker_embed.h）
+BUILTIN_CLONE = [
+    {"name": "girl_base", "label": "girl_base（默认）"},
+    {"name": "ahu",       "label": "ahu"},
+]
+# CustomVoice 模型的 9 个预置音色（spk_id 表）
+PRESET_SPEAKERS = [
+    {"name": "serena",    "label": "serena"},
+    {"name": "vivian",    "label": "vivian"},
+    {"name": "uncle_fu",  "label": "uncle_fu"},
+    {"name": "ryan",      "label": "ryan"},
+    {"name": "aiden",     "label": "aiden"},
+    {"name": "ono_anna",  "label": "ono_anna"},
+    {"name": "sohee",     "label": "sohee"},
+    {"name": "eric",      "label": "eric（四川话）"},
+    {"name": "dylan",     "label": "dylan（北京话）"},
+]
+
+VOICE_NAME_RE = re.compile(r"[a-z0-9_\-]{1,24}")
+
+def list_custom_voices():
+    """扫描 voices/ 下的自定义克隆音色（extract_spk_embed.py 生成、页面上传）"""
+    try:
+        names = sorted(f[:-4] for f in os.listdir(VOICES_DIR)
+                       if f.endswith(".npy") and VOICE_NAME_RE.fullmatch(f[:-4]))
+    except FileNotFoundError:
+        return []
+    return [{"name": n, "label": n} for n in names]
+
+def _validate_voice_npy(data):
+    """校验音色文件（与引擎 C++ 侧 load_speaker_embed_npy 同一套规则）：恰好 2048 个 float32"""
+    if len(data) > 65536:
+        return "文件过大（应约 8KB）"
+    if len(data) < 11 or data[:6] != b"\x93NUMPY":
+        return "不是 numpy .npy 文件"
+    if data[6] != 1:
+        return "不支持的 npy 版本 %d" % data[6]
+    header_len = data[8] | (data[9] << 8)
+    if len(data) - 10 - header_len != 2048 * 4:
+        return "数据长度不对：应恰好 2048 个 float32（约 8KB）"
+    header = data[10:10 + header_len].decode("ascii", "replace")
+    if "<f4" not in header and "|f4" not in header:
+        return "dtype 不是 float32"
+    return None  # 通过
+
 # ── HTTP 接口 ────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def _status(self):
@@ -194,6 +243,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/status":
             self._status()
             return
+        if self.path == "/api/voices":
+            self.send_json({"builtin_clone": BUILTIN_CLONE,
+                            "preset": PRESET_SPEAKERS,
+                            "custom": list_custom_voices()})
+            return
         if self.path == "/" or self.path == "/index.html":
             path = os.path.join(os.path.dirname(__file__), "tts.html")
             if os.path.exists(path):
@@ -201,6 +255,7 @@ class Handler(BaseHTTPRequestHandler):
                     body = f.read()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")  # demo 迭代频繁，别让浏览器用旧缓存页面
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -258,6 +313,84 @@ class Handler(BaseHTTPRequestHandler):
             stop_engine()
             BYE_AT[0] = time.time()  # 宽限 10s 无页面回来则整个服务退出
             self.send_json({"status": "released"})
+
+        elif self.path.startswith("/api/voice/upload"):
+            # 声音克隆：上传 .npy（query 带 ?name=，body 是文件内容），存进 voices/
+            q = parse_qs(urlparse(self.path).query)
+            name = (q.get("name", [""])[0] or "").strip().lower()
+            if not VOICE_NAME_RE.fullmatch(name):
+                self.send_json({"error": "音色名只能用小写字母/数字/_/-，1~24 位"}, code=400)
+                return
+            content_len = int(self.headers.get("Content-Length", 0))
+            if content_len <= 0 or content_len > 65536:
+                self.send_json({"error": "文件内容缺失或过大"}, code=400)
+                return
+            data = self.rfile.read(content_len)
+            err = _validate_voice_npy(data)
+            if err:
+                self.send_json({"error": f"音色文件校验失败：{err}"}, code=400)
+                return
+            os.makedirs(VOICES_DIR, exist_ok=True)
+            tmp = os.path.join(VOICES_DIR, f".{name}.tmp")
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, os.path.join(VOICES_DIR, f"{name}.npy"))
+            print(f"[tts] 自定义音色已保存: {name}", flush=True)
+            self.send_json({"ok": True, "name": name,
+                            "custom": [v["name"] for v in list_custom_voices()]})
+
+        elif self.path.startswith("/api/voice/extract"):
+            # 板端声音克隆：body = 24kHz mono float32 PCM（浏览器解码/重采样后传来），
+            # 引擎用 spk_embed.rknn 提取 2048 维向量并直接存 voices/{name}.npy
+            q = parse_qs(urlparse(self.path).query)
+            name = (q.get("name", [""])[0] or "").strip().lower()
+            if not VOICE_NAME_RE.fullmatch(name):
+                self.send_json({"error": "音色名只能用小写字母/数字/_/-，1~24 位"}, code=400)
+                return
+            content_len = int(self.headers.get("Content-Length", 0))
+            if content_len < 4 or content_len > 4 * 1024 * 1024:
+                self.send_json({"error": "音频数据缺失或过大（上限 4MB）"}, code=400)
+                return
+            data = self.rfile.read(content_len)
+            if len(data) % 4 != 0:
+                self.send_json({"error": "音频数据应为 float32 PCM"}, code=400)
+                return
+            n_samples = len(data) // 4
+            if n_samples < 24000:
+                self.send_json({"error": "音频不足 1 秒，建议 5~10 秒"}, code=400)
+                return
+            tmp = f"/tmp/spk_in_{os.getpid()}_{int(time.time() * 1000) % 1000000}.pcm"
+            with open(tmp, "wb") as f:
+                f.write(data)
+            try:
+                resp = sock_send({"cmd": "extract", "pcm": tmp, "name": name})
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            if resp.get("ev") == "error":
+                self.send_json({"error": resp.get("msg", "提取失败")}, code=500)
+                return
+            print(f"[tts] 板端提取音色完成: {name}（{n_samples / 24000:.1f}s 音频）", flush=True)
+            self.send_json({"ok": True, "name": name,
+                            "custom": [v["name"] for v in list_custom_voices()]})
+
+        elif self.path == "/api/voice/delete":
+            content_len = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_len) if content_len else b"{}"
+            try:
+                name = json.loads(body).get("name", "").strip().lower()
+            except Exception:
+                name = ""
+            if not VOICE_NAME_RE.fullmatch(name):
+                self.send_json({"error": "音色名不合法"}, code=400)
+                return
+            path = os.path.join(VOICES_DIR, f"{name}.npy")
+            if os.path.exists(path):
+                os.unlink(path)
+                print(f"[tts] 自定义音色已删除: {name}", flush=True)
+            self.send_json({"ok": True})
 
         else:
             self.send_json({"error": "not found"}, code=404)

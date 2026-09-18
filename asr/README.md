@@ -4,10 +4,10 @@
 
 ![端口](https://img.shields.io/badge/%E7%AB%AF%E5%8F%A3-8090-0e7490.svg)
 ![官方二进制](https://img.shields.io/badge/%E5%AE%98%E6%96%B9%E4%BA%8C%E8%BF%9B%E5%88%B6%20%C2%B7%20%E6%97%A0%E9%9C%80%E7%BC%96%E8%AF%91-1e293b.svg)
-![流式字幕](https://img.shields.io/badge/%E6%B5%81%E5%BC%8F%E5%AD%97%E5%B9%95%20%C2%B7%20%E5%AE%9A%E7%A8%BF%2B%E6%9C%AA%E5%AE%9A%E7%A8%BF-6366f1.svg)
+![流式字幕](https://img.shields.io/badge/%E8%BE%B9%E8%BD%AC%E8%BE%B9%E5%87%BA%E5%AD%97%20%C2%B7%20%E9%BB%91%E5%AD%97%E5%B7%B2%E7%A1%AE%E8%AE%A4%20%E7%81%B0%E5%AD%97%E8%BF%98%E5%9C%A8%E6%94%B9-6366f1.svg)
 ![双模式](https://img.shields.io/badge/%E9%BA%A6%E5%85%8B%E9%A3%8E%E5%BD%95%E9%9F%B3%20%2B%20%E4%B8%8A%E4%BC%A0%E9%9F%B3%E9%A2%91-8b5cf6.svg)
 
-对着麦克风说一段话，停止后**字幕逐轮流出来**——定稿黑字逐段追加、未定稿灰字带光标实时刷新，转写过程全程可见。也可以上传音频文件（wav/mp3/flac/m4a…），同样的流式字幕。
+对着麦克风说一段话，停止后**字幕像打字一样逐轮流出来**：已经确定的句子是黑色正文、固定不动越来越长；正在识别的那半句先用灰色草稿显示，随语音不断修正、改准了才「转正」变黑。也可以上传音频文件（wav/mp3/flac/m4a…），效果相同。
 
 <img src="../docs/img/asr_demo.png" alt="语音字幕 demo 界面" width="560">
 
@@ -44,10 +44,6 @@ ssh root@<板子IP> "sh /root/asr_demo/start.sh"
 ## 转写速度
 
 实测（15 秒英文测试音频，16 轮）：每轮芯片级 **audio ~33ms · ttft ~70ms**，整段几秒出完；首轮前要加载模型——**冷启动约 1 分钟，之后约 15 秒**（权重留在 page cache）。单段音频上限 17 分钟。
-
-## 为什么是「停止后才出字幕」
-
-官方 online 二进制其实是**对完整文件做分块流式转写**（「online」指逐轮输出，不是实时输入）。我们验证过喂实时流的可行性：稀疏文件 + 运行中追加、SIGSTOP 限速、strace 追 syscall——结论是它 open 时就把循环边界钉死在文件实际长度上（运行中追加的数据一个字节都不会读），所以「录音 → 停止 → 流式出字幕」是这个二进制上最稳的形态，转写过程本身仍是全程流式可见的。
 
 ## 模型什么时候加载？
 

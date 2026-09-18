@@ -63,7 +63,7 @@ ssh root@<板子IP> "sh /root/tts_demo/start.sh"
 
 - 参考音频要求：**5~10 秒干净人声**（单人、无 BGM、无混响），最短 3 秒；引擎固定取前 10 秒——**录满 10 秒相似度最好**（短音频会被补零，稀释音色向量）
 - 板端提取实测：向量提取 0.11s；金标准对拍 cosine 0.9993（板端 C++ 预处理 + NPU 推理 vs 服务器 PyTorch 真值）
-- `spk_embed.rknn` / `spk_embed.weight` / `spk_mel_128x513.f32` 三个文件需手动放模型目录（暂未进 deploy.sh 的 Release 自动下载清单）
+- `spk_embed.rknn` / `spk_embed.weight` / `spk_mel_128x513.f32` 已进 deploy.sh 的 Release 自动下载清单；要自己重新转换编码器则看 `tools/HANDOFF_export.md`
 - 编码器是官方 Qwen3-TTS 12Hz 1.7B-Base 里的说话人编码器（社区导出 `marksverdhei/Qwen3-Voice-Embedding-12Hz-1.7B`，ECAPA 12M 参数，Apache-2.0）；板上预处理（STFT + mel 滤波器组）与 transformers 侧逐位对齐，mel 矩阵从 `spk_mel_128x513.f32` 数据文件加载，不在 C++ 里复刻公式
 - 录音需要浏览器安全上下文：板上 chromium（127.0.0.1）没问题；从 PC 用裸 IP 访问时 getUserMedia 会被禁，此时用「选音频文件」即可
 - 手动路径也保留：PC 上 `tools/extract_spk_embed.py` 出 `.npy` → 网页上传或 `scp` 进 `voices/`，与板端提取完全等价

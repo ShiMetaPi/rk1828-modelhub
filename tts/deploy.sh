@@ -37,7 +37,10 @@ text_projection.weight|text_projection.weight
 tokenizer.json|tokenizer.json
 codec_embed.fp16.bin|codec_embed.fp16.bin
 talker_input_embed.fp16.bin|talker_input_embed.fp16.bin
-talker_text_embed.fp16.bin|talker_text_embed.fp16.bin"
+talker_text_embed.fp16.bin|talker_text_embed.fp16.bin
+spk_embed.rknn|spk_embed.rknn
+spk_embed.weight|spk_embed.weight
+spk_mel_128x513.f32|spk_mel_128x513.f32"
 
 # MD5 校验表（资产名→md5，不放在目标路径避免重装时路径变化）
 MD5="
@@ -53,6 +56,9 @@ tokenizer.json|embeds|d50b61a09d1a789c3fd5b3a3e2788362
 codec_embed.fp16.bin|embeds|b53bbabf564e25efb64f5fde74595df9
 talker_input_embed.fp16.bin|embeds|290aa87436980f4598ecd52428aa95c0
 talker_text_embed.fp16.bin|embeds|73bc6a2e689f6cd3c73cf830c5755518
+spk_embed.rknn|spk_encoder|ec194212e0e1511e07d1e7e855752833
+spk_embed.weight|spk_encoder|59957211db575ea3cfce41e5659491e5
+spk_mel_128x513.f32|spk_encoder|62ed21d88f1bcb7345c21324e1236f35
 "
 
 md5_of() {

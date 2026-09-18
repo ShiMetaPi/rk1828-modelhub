@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>语音字幕 · Qwen3-ASR</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 36px 16px;
+  }
+  .wrap { width: min(880px, 96vw); }
+  h1 { font-size: 22px; font-weight: 600; color: #fff; }
+  .subtitle { font-size: 13px; color: #888; margin: 6px 0 26px; }
+  .sources { display: flex; gap: 14px; flex-wrap: wrap; }
+  .src-card {
+    background: #1a1d27;
+    border-radius: 14px;
+    padding: 22px;
+    flex: 1 1 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .src-title { font-size: 14px; color: #c3c6dd; font-weight: 600; }
+  .src-hint { font-size: 12px; color: #777; line-height: 1.7; }
+  .rec-row { display: flex; align-items: center; gap: 16px; }
+  .rec-btn {
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid #4a4d66; background: #20232f;
+    cursor: pointer; transition: all .2s; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .rec-btn .dot { width: 22px; height: 22px; border-radius: 50%; background: #e05555; transition: all .2s; }
+  .rec-btn:hover { border-color: #6a4d4d; }
+  .rec-btn.recording { border-color: #e05555; animation: pulse 1.2s ease-in-out infinite; }
+  .rec-btn.recording .dot { border-radius: 4px; }   /* 圆点变方块 = 停止 */
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(224,85,85,.35); } 50% { box-shadow: 0 0 0 12px rgba(224,85,85,0); } }
+  .rec-time { font-size: 26px; font-variant-numeric: tabular-nums; color: #e0e0e0; }
+  .rec-time.on { color: #e05555; }
+  canvas#wave { width: 100%; height: 52px; background: #14161e; border-radius: 8px; display: block; }
+  .drop {
+    border: 1.5px dashed #3a3d52; border-radius: 10px;
+    padding: 26px 16px; text-align: center; font-size: 13px; color: #8a8da5;
+    cursor: pointer; transition: border-color .2s, background .2s;
+  }
+  .drop:hover, .drop.over { border-color: #6366f1; background: #20232f; }
+  .drop input { display: none; }
+  .file-info { font-size: 13px; color: #9a9db5; min-height: 18px; }
+
+  .stage {
+    margin-top: 14px;
+    background: #14161e;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .stage-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 20px; border-bottom: 1px solid #232634;
+    font-size: 12px; color: #8a8da5;
+  }
+  .stage-bar .spacer { flex: 1; }
+  .chip { background: #20232f; border-radius: 6px; padding: 3px 9px; font-variant-numeric: tabular-nums; }
+  .stage-bar button {
+    background: transparent; border: 1px solid #4a4d66; color: #c3c6dd;
+    border-radius: 7px; padding: 5px 13px; font-size: 12px; cursor: pointer;
+  }
+  .stage-bar button:hover { background: #262a3a; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+  .status-dot.busy { background: #e0a955; animation: blink 1s ease-in-out infinite; }
+  .status-dot.err  { background: #f87171; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .stage-body { padding: 28px 32px; min-height: 220px; }
+  .empty { color: #555; font-size: 14px; text-align: center; padding-top: 70px; line-height: 2; }
+  #committed { font-size: 21px; line-height: 1.9; color: #f2f2ea; word-break: break-word; }
+  #committed p { animation: fadein .5s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+  #unfix { font-size: 19px; color: #7c7f96; font-style: italic; line-height: 1.8; min-height: 30px; word-break: break-word; }
+  #unfix::after { content: "▍"; color: #7c7f96; animation: blink 1s infinite; }
+  .status-line { font-size: 12px; margin-top: 18px; min-height: 16px; }
+  .status-line.err { color: #f87171; }
+  .status-line.ok  { color: #4ade80; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>语音字幕</h1>
+  <p class="subtitle">Qwen3-ASR 0.6B · RKNN 加速 · 转写过程逐轮流出（黑字定稿 / 灰字未定稿）</p>
+
+  <div class="sources">
+    <div class="src-card">
+      <div class="src-title">麦克风录音</div>
+      <div class="rec-row">
+        <div class="rec-btn" id="recBtn" title="开始录音"><div class="dot"></div></div>
+        <div class="rec-time" id="recTime">00:00</div>
+      </div>
+      <canvas id="wave"></canvas>
+      <div class="src-hint">点圆点开始，再点停止后生成字幕。板上浏览器可用；PC 裸 IP 访问时麦克风被浏览器禁用，请用右侧上传。</div>
+    </div>
+
+    <div class="src-card">
+      <div class="src-title">上传音频</div>
+      <label class="drop" id="drop">
+        点这里选音频文件，或把文件拖进来
+        <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac">
+      </label>
+      <div class="file-info" id="fileInfo">支持 wav / mp3 / flac / ogg / m4a（浏览器里解码）</div>
+      <div class="src-hint">上传后自动开始转写。整段音频在浏览器解码成 16kHz 单声道再交给 NPU。</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-bar">
+      <div class="status-dot" id="dot"></div>
+      <span id="stageTxt">就绪</span>
+      <span class="chip" id="roundChip" style="display:none"></span>
+      <span class="chip" id="perfChip" style="display:none"></span>
+      <div class="spacer"></div>
+      <button id="copyBtn">复制全文</button>
+      <button id="clearBtn">清空</button>
+    </div>
+    <div class="stage-body">
+      <div class="empty" id="emptyHint">录音或上传音频后，字幕会逐段流出来</div>
+      <div id="committed"></div>
+      <div id="unfix" style="display:none"></div>
+      <div class="status-line" id="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const recBtn   = document.getElementById("recBtn");
+const recTime  = document.getElementById("recTime");
+const wave     = document.getElementById("wave");
+const drop     = document.getElementById("drop");
+const fileIn   = document.getElementById("file");
+const fileInfo = document.getElementById("fileInfo");
+const dot      = document.getElementById("dot");
+const stageTxt = document.getElementById("stageTxt");
+const roundChip= document.getElementById("roundChip");
+const perfChip = document.getElementById("perfChip");
+const committed= document.getElementById("committed");
+const unfix    = document.getElementById("unfix");
+const emptyHint= document.getElementById("emptyHint");
+const status   = document.getElementById("status");
+
+let serviceUp = false;
+let busy = false;          // 转写中
+let curJid = null;
+let recorder = null, recStream = null, recTimer = null, t0rec = 0;
+let analyser = null, actx = null, rafId = null;
+
+function setStatus(msg, ok=false, err=false) {
+  status.textContent = msg;
+  status.className = "status-line" + (ok ? " ok" : err ? " err" : "");
+}
+function setStage(txt, mode) {   // mode: "" | busy | err
+  stageTxt.textContent = txt;
+  dot.className = "status-dot" + (mode === "busy" ? " busy" : mode === "err" ? " err" : "");
+}
+
+// ── 音频编码：任意 blob → AudioBuffer → 16kHz mono → PCM16 WAV ──────
+async function blobToWav16k(blob) {
+  const buf = await blob.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let decoded;
+  try { decoded = await ctx.decodeAudioData(buf); } finally { ctx.close(); }
+  const dur = decoded.duration;
+  if (dur < 0.5) throw new Error("音频不足 0.5 秒");
+  if (dur > 17 * 60) throw new Error("音频超过 17 分钟上限");
+  const off = new OfflineAudioContext(1, Math.ceil(dur * 16000), 16000);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const rendered = await off.startRendering();
+  const f32 = rendered.getChannelData(0);
+  const i16 = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  const hdr = new ArrayBuffer(44);
+  const v = new DataView(hdr);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + i16.length * 2, true); ws(8, "WAVE");
+  ws(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 16000, true); v.setUint32(28, 32000, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, i16.length * 2, true);
+  return { blob: new Blob([hdr, i16], { type: "audio/wav" }), dur };
+}
+
+// ── 提交转写 + SSE 渲染 ─────────────────────────────────────────────
+function sseConnect() {
+  const es = new EventSource("/api/events");
+  es.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.jid !== undefined && m.jid !== curJid) return;
+    if (m.ev === "phase") { setStage("加载模型", "busy"); setStatus(m.msg || "模型加载中…"); }
+    else if (m.ev === "round") { roundChip.style.display = ""; roundChip.textContent = "第 " + m.n + " 轮"; setStage("转写中", "busy"); }
+    else if (m.ev === "commit") {
+      emptyHint.style.display = "none";
+      if (m.text) { const p = document.createElement("p"); p.textContent = m.text; committed.appendChild(p); }
+    }
+    else if (m.ev === "unfix") {
+      emptyHint.style.display = "none";
+      if (m.text) { unfix.style.display = ""; unfix.textContent = m.text; }
+      else unfix.style.display = "none";
+    }
+    else if (m.ev === "perf") {
+      perfChip.style.display = "";
+      perfChip.textContent = "audio " + Math.round(m.audio_ms) + "ms · ttft " + Math.round(m.ttft_ms) + "ms";
+    }
+    else if (m.ev === "final") {
+      const txt = m.text || "";
+      committed.innerHTML = "";
+      if (txt) { const p = document.createElement("p"); p.textContent = txt; committed.appendChild(p); }
+      else { const p = document.createElement("p"); p.textContent = "（没听清内容）"; p.style.color = "#666"; committed.appendChild(p); }
+      unfix.style.display = "none";
+      busy = false;
+      setStage("完成 · " + (txt ? txt.length + " 字" : "无内容"), "");
+      setStatus("转写完成" + (m.rc !== 0 ? "（退出码 " + m.rc + "）" : ""), ok=true);
+    }
+    else if (m.ev === "error") {
+      busy = false;
+      setStage("出错", "err");
+      setStatus(m.msg || "转写失败", err=true);
+    }
+  };
+}
+
+async function startTranscribe(wavBlob, label) {
+  if (busy) { setStatus("正在转写中，请等当前任务完成", err=true); return; }
+  busy = true;
+  curJid = null;
+  roundChip.style.display = "none"; perfChip.style.display = "none";
+  unfix.style.display = "none"; committed.innerHTML = "";
+  emptyHint.style.display = "none";
+  setStage("提交中", "busy");
+  setStatus("已提交" + (label ? "（" + label + "）" : "") + "…");
+  try {
+    const r = await fetch("/api/transcribe", { method: "POST", body: wavBlob });
+    const j = await r.json();
+    if (!r.ok) { busy = false; setStage("出错", "err"); setStatus(j.error || "提交失败", err=true); return; }
+    curJid = j.jid;
+    setStage("加载模型", "busy");
+    setStatus("模型加载中（首次约 1 分钟，之后约 15 秒）…");
+  } catch (e) {
+    busy = false; setStage("出错", "err");
+    setStatus("网络错误: " + e.message, err=true);
+  }
+}
+
+// ── 麦克风录音 ──────────────────────────────────────────────────────
+recBtn.addEventListener("click", async () => {
+  if (recorder) { recorder.stop(); return; }
+  if (!navigator.mediaDevices || !window.isSecureContext) {
+    setStatus("此环境不允许录音（需 localhost 或 https），请用「上传音频」", err=true);
+    return;
+  }
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    recorder = new MediaRecorder(recStream);
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stopWave();
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      recorder = null;
+      recBtn.classList.remove("recording");
+      const dur = (Date.now() - t0rec) / 1000;
+      recTime.classList.remove("on");
+      if (dur < 0.5) { setStatus("录音太短", err=true); return; }
+      setStatus("录音结束（" + dur.toFixed(1) + "s），解码提交中…");
+      try {
+        const w = await blobToWav16k(blob);
+        startTranscribe(w.blob, "录音 " + dur.toFixed(1) + "s");
+      } catch (e) { setStatus("处理录音失败: " + e.message, err=true); }
+    };
+    recorder.start();
+    t0rec = Date.now();
+    recBtn.classList.add("recording");
+    recTime.classList.add("on");
+    startWave(recStream);
+    recTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - t0rec) / 1000);
+      recTime.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }, 250);
+  } catch (e) {
+    recorder = null;
+    setStatus("录音失败: " + e.message, err=true);
+  }
+});
+
+// 录音波形
+function startWave(stream) {
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = actx.createMediaStreamSource(stream);
+  analyser = actx.createAnalyser();
+  analyser.fftSize = 512;
+  src.connect(analyser);
+  const cctx = wave.getContext("2d");
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  const draw = () => {
+    rafId = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(data);
+    const W = wave.width = wave.clientWidth, H = wave.height;
+    cctx.fillStyle = "#14161e"; cctx.fillRect(0, 0, W, H);
+    cctx.fillStyle = "#e05555";
+    const bars = 64, step = Math.floor(data.length / bars);
+    for (let i = 0; i < bars; i++) {
+      let v = 0;
+      for (let k = 0; k < step; k++) v = Math.max(v, data[i * step + k]);
+      const h = Math.max(2, (v / 255) * (H - 8));
+      cctx.fillRect(i * (W / bars) + 2, (H - h) / 2, W / bars - 4, h);
+    }
+  };
+  draw();
+}
+function stopWave() {
+  clearInterval(recTimer);
+  if (rafId) cancelAnimationFrame(rafId);
+  if (recStream) recStream.getTracks().forEach(t => t.stop());
+  if (actx) actx.close().catch(() => {});
+  const cctx = wave.getContext("2d");
+  cctx.fillStyle = "#14161e"; cctx.fillRect(0, 0, wave.width, wave.height);
+}
+
+// ── 上传音频 ────────────────────────────────────────────────────────
+async function handleFile(f) {
+  if (!f) return;
+  if (busy) { setStatus("正在转写中，请等当前任务完成", err=true); return; }
+  fileInfo.textContent = f.name;
+  setStatus("解码 " + f.name + " …");
+  try {
+    const w = await blobToWav16k(f);
+    fileInfo.textContent = f.name + " · " + w.dur.toFixed(1) + "s";
+    startTranscribe(w.blob, f.name);
+  } catch (e) {
+    setStatus("解码失败: " + e.message + "（试试 wav/mp3）", err=true);
+  }
+}
+fileIn.addEventListener("change", () => handleFile(fileIn.files[0]));
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => {
+  e.preventDefault(); drop.classList.remove("over");
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// ── 复制 / 清空 ─────────────────────────────────────────────────────
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const txt = committed.textContent.trim();
+  if (!txt) { setStatus("还没有字幕", err=true); return; }
+  try { await navigator.clipboard.writeText(txt); setStatus("已复制 " + txt.length + " 字", ok=true); }
+  catch { setStatus("复制失败，手动选择文本复制", err=true); }
+});
+document.getElementById("clearBtn").addEventListener("click", () => {
+  committed.innerHTML = ""; unfix.style.display = "none";
+  emptyHint.style.display = ""; roundChip.style.display = "none"; perfChip.style.display = "none";
+  setStage(busy ? "转写中" : "就绪", busy ? "busy" : ""); setStatus("");
+});
+
+// ── 服务探活 + 心跳 + 生命周期（与 tts demo 同款）───────────────────
+async function pollStatus() {
+  try {
+    const r = await fetch("/api/status");
+    if (r.ok) {
+      if (!serviceUp) { serviceUp = true; sseConnect(); setStatus("服务已连接，可以开始", ok=true); }
+      heartbeat();
+      return;
+    }
+  } catch {}
+  serviceUp = false;
+  setStatus("正在连接服务…");
+  setTimeout(pollStatus, 2000);
+}
+async function heartbeat() {
+  try {
+    await fetch("/api/status");   // 转写中也照常心跳（长音频可能持续数分钟）
+    setTimeout(heartbeat, 5000);
+  } catch {
+    serviceUp = false;
+    setStatus("服务已退出，请重新运行 start.sh 后刷新页面", err=true);
+    setStage("服务退出", "err");
+  }
+}
+window.addEventListener("pageshow", () => { pollStatus(); });
+window.addEventListener("pagehide", () => { navigator.sendBeacon("/api/bye"); });
+</script>
+</body>
+</html>

@@ -50,10 +50,20 @@ const char* kDefaultModelDir = "/root/Qwen3_TTS_deploy";
 
 void write_wav(const std::string& filename, const std::vector<float>& audio, int sample_rate) {
     int num_channels = 1;
-    int bits_per_sample = 32;
+    int bits_per_sample = 16;
     int byte_rate = sample_rate * num_channels * (bits_per_sample / 8);
     int block_align = num_channels * (bits_per_sample / 8);
-    int data_size = static_cast<int>(audio.size() * sizeof(float));
+
+    // float32 → int16 PCM。用最通用的 16-bit 整数格式，避免浏览器/播放器
+    // 对 float32 + 非标准采样率的解码兼容性问题（板子 Chromium 软渲染易崩）。
+    std::vector<int16_t> pcm(audio.size());
+    for (size_t i = 0; i < audio.size(); ++i) {
+        float v = audio[i];
+        if (v > 1.0f) v = 1.0f;
+        if (v < -1.0f) v = -1.0f;
+        pcm[i] = static_cast<int16_t>(v * 32767.0f);
+    }
+    int data_size = static_cast<int>(pcm.size() * sizeof(int16_t));
     int chunk_size = 36 + data_size;
 
     std::ofstream ofs(filename, std::ios::binary);
@@ -69,7 +79,7 @@ void write_wav(const std::string& filename, const std::vector<float>& audio, int
     ofs.write("fmt ", 4);
     int subchunk1_size = 16;
     ofs.write(reinterpret_cast<const char*>(&subchunk1_size), 4);
-    int audio_format = 3;  // IEEE float
+    int audio_format = 1;  // PCM
     ofs.write(reinterpret_cast<const char*>(&audio_format), 2);
     ofs.write(reinterpret_cast<const char*>(&num_channels), 2);
     ofs.write(reinterpret_cast<const char*>(&sample_rate), 4);
@@ -79,7 +89,7 @@ void write_wav(const std::string& filename, const std::vector<float>& audio, int
 
     ofs.write("data", 4);
     ofs.write(reinterpret_cast<const char*>(&data_size), 4);
-    ofs.write(reinterpret_cast<const char*>(audio.data()), data_size);
+    ofs.write(reinterpret_cast<const char*>(pcm.data()), data_size);
 }
 
 // 把 [length, 16] 的 codes 转置成 [16, length]（speech_decoder 输入格式）

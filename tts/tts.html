@@ -138,10 +138,10 @@
   </select>
 
   <div class="row">
-    <button id="btn">生成语音</button>
+    <button id="btn" disabled>生成语音</button>
   </div>
 
-  <div class="hint">生成完毕后自动播放；NPU 空闲时模型随页面加载</div>
+  <div class="hint">打开页面自动加载模型（约 40 秒），就绪后可生成；NPU 空闲 75 秒后自动释放</div>
 
   <div class="audio-wrap" id="audioWrap">
     <audio id="player" controls></audio>
@@ -160,10 +160,35 @@ const player   = document.getElementById("player");
 const status  = document.getElementById("status");
 
 let audioUrl = null;
+let ready = false;       // 引擎是否就绪
+let generating = false;  // 是否正在合成
 
 function setStatus(msg, ok=false, err=false) {
   status.textContent = msg;
   status.className = "status" + (ok ? " ok" : err ? " err" : "");
+}
+
+// 轮询后端探活：加载中显示“正在加载模型”，就绪后启用按钮
+async function pollStatus() {
+  if (generating) return;  // 合成期间不打扰状态显示
+  try {
+    const r = await fetch("/api/status");
+    const j = await r.json();
+    if (j.status === "ready") {
+      ready = true;
+      btn.disabled = false;
+      setStatus("模型已就绪，可以生成", ok=true);
+      return;  // 就绪后停止轮询（不再 touch，交给 keepalive 自动释放 NPU）
+    }
+    ready = false;
+    btn.disabled = true;
+    setStatus("正在加载模型…");
+  } catch(e) {
+    ready = false;
+    btn.disabled = true;
+    setStatus("正在加载模型…");
+  }
+  setTimeout(pollStatus, 2000);
 }
 
 btn.addEventListener("click", async () => {
@@ -171,6 +196,7 @@ btn.addEventListener("click", async () => {
   const inst = instruct.value.trim();
   const spk = speaker.value;
   if (!t) { setStatus("请输入文本", err=true); return; }
+  generating = true;
   btn.disabled = true;
   setStatus("正在生成…");
   try {
@@ -188,17 +214,23 @@ btn.addEventListener("click", async () => {
     audioUrl = URL.createObjectURL(await r.blob());
     player.src = audioUrl;
     audioWrap.classList.add("show");
-    player.play().catch(()=>{});
-    setStatus("生成完毕", ok=true);
+    setStatus("生成完毕，点播放按钮听", ok=true);
   } catch(e) {
     setStatus("网络错误: " + e.message, err=true);
   } finally {
-    btn.disabled = false;
+    generating = false;
+    btn.disabled = !ready;  // 就绪则启用，否则继续等待轮询
   }
 });
 
+// 页面打开即开始加载模型 + 轮询状态
+window.addEventListener("pageshow", () => {
+  btn.disabled = true;
+  setStatus("正在加载模型…");
+  pollStatus();
+});
+
 // pagehide：页面关闭时通知后端释放 NPU
-window.addEventListener("pageshow", () => fetch("/api/status"));
 window.addEventListener("pagehide", () => {
   navigator.sendBeacon("/api/bye");
 });

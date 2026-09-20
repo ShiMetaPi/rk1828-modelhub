@@ -15,6 +15,7 @@ __pycache__/
 vl_engine
 vl_engine.*
 depth_engine
+yolo26_engine
 build/
 
 # 网卡限速等内部工具不放仓库
@@ -29,6 +30,11 @@ talker/
 rknn_Qwen3_ASR_demo/
 rknn_Qwen3_TTS_demo/
 spk_embed/
+
+# 根目录 model*/ 是模型转换工作区（onnx / 测试图 / 中间产物），不进仓库
+/model/
+/model_pose/
+/model_26/
 
 # 语音样本 / 合成产物（含个人声音数据，不进公开仓库）
 /*.wav

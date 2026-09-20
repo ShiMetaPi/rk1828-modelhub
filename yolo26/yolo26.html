@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YOLO26 · 实时识别</title>
+<style>
+  :root {
+    --bg: #101216; --panel: #171b22; --panel2: #1d222b;
+    --text: #e8eaf0; --muted: #8b93a7; --line: #262c37;
+    --accent: #5b9cff; --ok: #57c7a4; --err: #e05f5f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans CJK SC", sans-serif;
+    min-height: 100vh; display: flex; justify-content: center;
+  }
+  .wrap { width: min(960px, 100%); padding: 18px 16px 40px; }
+
+  header { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 21px; font-weight: 700; letter-spacing: .3px; }
+  h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+
+  .tabs { display: inline-flex; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 9px; padding: 3px; gap: 3px; }
+  .tab { border: 0; background: transparent; color: var(--muted); font-size: 13px;
+         padding: 6px 16px; border-radius: 7px; cursor: pointer; }
+  .tab.on { background: var(--accent); color: #fff; font-weight: 600; }
+  .tab:disabled { cursor: not-allowed; opacity: .45; }
+
+  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .btn { border: 1px solid var(--line); background: var(--panel); color: var(--text);
+         font-size: 14px; padding: 8px 18px; border-radius: 9px; cursor: pointer; }
+  .btn:hover:not(:disabled) { background: var(--panel2); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+  .chips { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .chip { background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+          font-size: 12px; padding: 5px 11px; border-radius: 999px; white-space: nowrap; }
+  .chip b { color: var(--text); font-weight: 600; }
+
+  .stage { position: relative; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 12px; overflow: hidden; min-height: 200px;
+           display: flex; align-items: center; justify-content: center; }
+  .stage video, .stage img { display: none; width: 100%; height: auto; }
+  #disp { display: none; width: 100%; height: auto; background: #000; }
+  .stage.cam #disp { display: block; }
+  .stage.photo img { display: block; }
+  #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+  .stage.cam #ov, .stage.photo #ov { display: block; }
+
+  .hint { color: var(--muted); font-size: 14px; padding: 60px 20px; text-align: center; }
+  .hint.hidden { display: none; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center;
+             justify-content: center; background: rgba(16,18,22,.72); font-size: 14px;
+             color: var(--text); }
+  #loading.hidden { display: none; }
+
+  .foot { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+
+  #toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+           background: #2a1113; color: #ffb4b4; border: 1px solid #5c2a2e;
+           font-size: 13px; padding: 9px 16px; border-radius: 9px;
+           opacity: 0; pointer-events: none; transition: opacity .25s; max-width: 90vw; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>YOLO26 · 实时识别<small>检测 · 分割 · 姿态</small></h1>
+    <nav class="tabs">
+      <button class="tab" data-task="det">检测</button>
+      <button class="tab on" data-task="seg">分割</button>
+      <button class="tab" data-task="pose">姿态</button>
+    </nav>
+  </header>
+
+  <div class="bar">
+    <button id="btnStart" class="btn primary">开始摄像头</button>
+    <button id="btnStop" class="btn" disabled>停止</button>
+    <label class="btn">上传图片<input id="file" type="file" accept="image/*" hidden></label>
+    <div class="chips">
+      <span class="chip" id="chipFps">FPS <b>—</b></span>
+      <span class="chip" id="chipMs">耗时 <b>—</b></span>
+      <span class="chip" id="chipBr">页面 <b>—</b></span>
+      <span class="chip" id="chipN">目标 <b>—</b></span>
+    </div>
+  </div>
+
+  <div id="stage" class="stage">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="disp"></canvas>
+    <img id="photo" alt="">
+    <canvas id="ov"></canvas>
+    <div id="idleHint" class="hint">点「开始摄像头」实时检测，或上传一张图试试</div>
+    <div id="loading" class="hint hidden" style="position:absolute;z-index:2">模型加载中…</div>
+  </div>
+
+  <p class="foot">
+    <span id="footTask">YOLO26n-seg · W8A8 INT8 · 输入 640×640 · 引擎只回 JSON（框 / 类别 / mask），框和实例彩罩都在浏览器端绘制。<br>坐标已还原到原图，mask 为逐像素 1-bit 打包传输。</span>
+  </p>
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const stage = $("stage"), cam = $("cam"), photo = $("photo"), ov = $("ov"),
+      octx = ov.getContext("2d"),
+      disp = $("disp"), dctx = disp.getContext("2d");
+
+// 类别配色（按 cls 取模循环）
+const PALETTE = [
+  ["#e05f5f", "#ff9d9d"], ["#e6a23c", "#ffd39b"], ["#57c7a4", "#b5f0dd"],
+  ["#5b9cff", "#bcd7ff"], ["#b583d6", "#e2ccf2"], ["#e07ba5", "#ffc9dd"],
+  ["#7fd45f", "#cdf0b4"], ["#54c6c0", "#b8f0ec"], ["#c9a24b", "#eedeab"],
+  ["#8f9bff", "#ccd0ff"]];
+const colorOf = c => PALETTE[c % PALETTE.length];
+
+let running = false, uploading = false;
+let view = { k: 1, padX: 0, padY: 0 };  // 原图坐标 → 画布坐标：cx=(x-padX)*k, cy=(y-padY)*k
+let fpsEma = 0, lastFrameAt = 0, errStreak = 0;
+let task = "seg", switching = false;    // 当前任务（引擎已加载的模型）
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+// ── 摄像头（板端 chromium 需要 device 迭代才能拿到可用流）──────────
+async function openCamera() {
+  const tryGUM = c => navigator.mediaDevices.getUserMedia({ video: c, audio: false });
+  const ideal = { width: { ideal: 640 }, height: { ideal: 360 } };
+  let stream = null;
+  try { stream = await tryGUM(ideal); } catch (e) { /* 走下面的设备迭代 */ }
+  if (stream) {
+    // 摄像头偏爱给大分辨率（1080p MJPG），收紧到 640×360 省 browser 端采样开销
+    const s = stream.getVideoTracks()[0].getSettings();
+    if (s.width > 1280) {
+      try {
+        const t = await tryGUM({ width: { exact: 640 }, height: { exact: 360 } });
+        stream.getTracks().forEach(x => x.stop());
+        stream = t;
+      } catch (e) { /* 收紧失败就用原流 */ }
+    }
+    return stream;
+  }
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  for (const d of devs) {
+    if (d.kind !== "videoinput") continue;
+    try {
+      return await tryGUM(Object.assign({ deviceId: { exact: d.deviceId } }, ideal));
+    } catch (e) { /* 试下一个 */ }
+  }
+  return null;
+}
+
+// letterbox 成 640×640（bg 114）
+// jpeg 模式（传图/回退）返回 dataURL；raw 模式（摄像头环路）返回 RGB 裸字节，
+// 免掉「浏览器编 JPEG → 引擎解 JPEG」一来一回的 ~40ms
+const LB = document.createElement("canvas");
+LB.width = LB.height = 640;
+const lbCtx = LB.getContext("2d", { willReadFrequently: true });
+function drawLetterbox(src, sw, sh) {
+  const scale = Math.min(640 / sw, 640 / sh);
+  const nw = Math.round(sw * scale), nh = Math.round(sh * scale);
+  const dx = Math.floor((640 - nw) / 2), dy = Math.floor((640 - nh) / 2);
+  lbCtx.fillStyle = "#727272";
+  lbCtx.fillRect(0, 0, 640, 640);
+  lbCtx.drawImage(src, dx, dy, nw, nh);
+  return { padX: dx, padY: dy, nw, nh };
+}
+function letterboxJPEG(src, sw, sh) {
+  drawLetterbox(src, sw, sh);
+  return LB.toDataURL("image/jpeg", 0.72);
+}
+// 摄像头环路：只读有效内容带（nw×nh）的 RGBA 直发引擎——
+// 浏览器端零像素循环（剥 alpha、贴 640×640 都在引擎 C++ 里做）
+function letterboxRGBA(src, sw, sh) {
+  const r = drawLetterbox(src, sw, sh);
+  const band = lbCtx.getImageData(r.padX, r.padY, r.nw, r.nh);
+  return { rgba: band.data, w: r.nw, h: r.nh, padX: r.padX, padY: r.padY };
+}
+
+// ── 引擎交互 ─────────────────────────────────────────────────────────
+async function engineReady() {
+  for (let i = 0; i < 120; i++) {
+    try {
+      const r = await (await fetch("/api/status")).json();
+      if (r.state === "ready") return true;
+      if (r.state === "error") { toast("模型加载失败：" + r.err); return false; }
+    } catch (e) { /* 服务未起，重试 */ }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  toast("引擎一直没就绪");
+  return false;
+}
+
+async function postJPEG(dataURL) {
+  const blob = await (await fetch(dataURL)).blob();
+  return fetch("/api/capture", { method: "POST", body: blob });
+}
+function postRGBA(buf, w, h) {
+  return fetch(`/api/capture?fmt=rgba&w=${w}&h=${h}`, { method: "POST", body: buf });
+}
+
+// ── 绘制 ─────────────────────────────────────────────────────────────
+function fitOverlay() {
+  const r = stage.getBoundingClientRect();
+  ov.width = Math.round(r.width);
+  ov.height = Math.round(r.height);
+}
+
+function drawResults(objs) {
+  fitOverlay();
+  octx.clearRect(0, 0, ov.width, ov.height);
+  const k = view.k, padX = view.padX, padY = view.padY;
+  for (const o of objs) {
+    const colr = colorOf(o.cls)[0];
+    const x = (o.box[0] - padX) * k, y = (o.box[1] - padY) * k;
+    const w = (o.box[2] - o.box[0]) * k, h = (o.box[3] - o.box[1]) * k;
+
+    if (o.m && o.m.w > 0 && o.m.d) drawMask(o, k, padX, padY, colr);
+    if (o.kp) drawSkeleton(o, k, padX, padY);
+
+    octx.strokeStyle = colr;
+    octx.lineWidth = 2;
+    octx.strokeRect(x, y, w, h);
+
+    const label = `${o.name} ${(o.p * 100) | 0}%`;
+    octx.font = "bold 13px system-ui, sans-serif";
+    const tw = octx.measureText(label).width;
+    const ly = y > 22 ? y - 20 : y + 2;
+    octx.fillStyle = colr;
+    octx.fillRect(x, ly, tw + 12, 19);
+    octx.fillStyle = "#fff";
+    octx.fillText(label, x + 6, ly + 14);
+  }
+}
+
+const maskCv = document.createElement("canvas");
+const maskCtx = maskCv.getContext("2d");
+function drawMask(o, k, padX, padY, colr) {
+  const m = o.m;
+  const bytes = atob(m.d);
+  const stride = (m.w + 7) >> 3;
+  maskCv.width = m.w; maskCv.height = m.h;
+  const img = maskCtx.createImageData(m.w, m.h);
+  const px = img.data;
+  const c = colr.slice(1);
+  const R = parseInt(c.substr(0, 2), 16), G = parseInt(c.substr(2, 2), 16),
+        B = parseInt(c.substr(4, 2), 16);
+  for (let y = 0; y < m.h; y++) {
+    const row = y * stride, drow = y * m.w * 4;
+    for (let x = 0; x < m.w; x++) {
+      const bit = bytes.charCodeAt(row + (x >> 3)) & (0x80 >> (x & 7));
+      if (bit) {
+        px[drow + x * 4] = R;
+        px[drow + x * 4 + 1] = G;
+        px[drow + x * 4 + 2] = B;
+        px[drow + x * 4 + 3] = 120;
+      }
+    }
+  }
+  maskCtx.putImageData(img, 0, 0);
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(maskCv, (m.x - padX) * k, (m.y - padY) * k, m.w * k, m.h * k);
+}
+
+// ── 姿态：COCO 17 关键点骨架（边表与阈值 0.25 均与官方 demo 一致）────
+const KP_LIMBS = [[15,13],[13,11],[16,14],[14,12],[11,12],[5,11],[6,12],
+                  [5,6],[5,7],[6,8],[7,9],[8,10],[1,2],[0,1],[0,2],[1,3],[2,4],[3,5],[4,6]];
+const KP_TH = 0.25;
+function drawSkeleton(o, k, padX, padY) {
+  const P = o.kp.map(p => ({ x: (p[0] - padX) * k, y: (p[1] - padY) * k, c: p[2] }));
+  octx.lineWidth = 3;
+  octx.lineCap = "round";
+  octx.strokeStyle = "rgba(34,211,238,.9)";  // 骨架线用固定青色，和类别色拉开
+  octx.beginPath();
+  for (const [a, b] of KP_LIMBS) {
+    if (P[a].c < KP_TH || P[b].c < KP_TH) continue;
+    octx.moveTo(P[a].x, P[a].y);
+    octx.lineTo(P[b].x, P[b].y);
+  }
+  octx.stroke();
+  for (const p of P) {
+    if (p.c < KP_TH) continue;
+    octx.fillStyle = "#ffd60a";
+    octx.beginPath();
+    octx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    octx.fill();
+    octx.lineWidth = 1.5;
+    octx.strokeStyle = "rgba(0,0,0,.55)";
+    octx.stroke();
+  }
+}
+
+// ── 任务切换（tab）：引擎换模型约 0.3~0.6s，期间暂停取帧 ──────────────
+async function switchTask(t, btn) {
+  if (t === task || switching) return;
+  switching = true;
+  const wasRunning = loopOn;
+  loopOn = false;  // 停发新帧；在途那帧由 r.task === task 门槛挡掉
+  try {
+    const r = await (await fetch("/api/task", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task: t })
+    })).json();
+    if (r.error) {
+      toast("切换失败：" + r.error);
+    } else {
+      task = t;
+      document.querySelectorAll(".tab[data-task]").forEach(b =>
+        b.classList.toggle("on", b === btn));
+      $("footTask").innerHTML = FOOT_TEXT[t] || FOOT_TEXT.seg;
+      octx.clearRect(0, 0, ov.width, ov.height);
+      // 传图模式下切任务：直接用新模型重推当前这张图
+      if (stage.className === "stage photo" && lastPhotoBlob) {
+        await processImage(lastPhotoBlob);
+      }
+    }
+  } catch (e) {
+    toast("网络异常，切换失败");
+  }
+  switching = false;
+  if (wasRunning) { loopOn = true; loop(); }
+}
+const FOOT_TEXT = {
+  det: "YOLO26n-det · W8A8 INT8 · 输入 640×640 · 引擎只回 JSON（框 / 类别），框在浏览器端绘制。<br>坐标已还原到原图。",
+  seg: "YOLO26n-seg · W8A8 INT8 · 输入 640×640 · 引擎只回 JSON（框 / 类别 / mask），框和实例彩罩都在浏览器端绘制。<br>坐标已还原到原图，mask 为逐像素 1-bit 打包传输。",
+  pose: "YOLO26n-pose · W8A8 INT8 · 输入 640×640 · 引擎只回 JSON（框 / 类别 / 17 关键点），骨架和关键点都在浏览器端绘制。<br>坐标已还原到原图；关键点置信度低于 0.25 的不画（与官方一致）。"
+};
+document.querySelectorAll(".tab[data-task]").forEach(b =>
+  b.addEventListener("click", () => switchTask(b.dataset.task, b)));
+
+function updateChips(ms, n, brMs, res) {
+  const now = performance.now();
+  if (lastFrameAt > 0) {
+    const inst = 1000 / Math.max(1, now - lastFrameAt);
+    fpsEma = fpsEma ? fpsEma * 0.8 + inst * 0.2 : inst;
+    $("chipFps").innerHTML = `FPS <b>${fpsEma.toFixed(1)}</b>`;
+  }
+  lastFrameAt = now;
+  if (ms) $("chipMs").innerHTML =
+    `引擎 <b>${(ms.pre + ms.npu + ms.post) | 0}ms</b>（NPU ${ms.npu | 0}）`;
+  if (brMs != null) $("chipBr").innerHTML = `页面 <b>${brMs | 0}ms</b> ${res || ""}`;
+  $("chipN").innerHTML = `目标 <b>${n}</b>`;
+}
+
+// ── 实时循环（单飞 in-flight = 天然背压）────────────────────────────
+let loopOn = false;
+async function loop() {
+  if (!loopOn) return;
+  if (document.hidden) { setTimeout(loop, 300); return; }
+  const vw = cam.videoWidth, vh = cam.videoHeight;
+  if (!vw) { setTimeout(loop, 120); return; }
+
+  const tA = performance.now();
+  const f = letterboxRGBA(cam, vw, vh);
+  // 冻结帧显示：画布放的永远是「正在被分析的那帧」，mask 和画面对齐无拖影
+  if (disp.width !== vw || disp.height !== vh) { disp.width = vw; disp.height = vh; }
+  dctx.drawImage(cam, 0, 0, vw, vh);
+  const capMs = performance.now() - tA;
+  try {
+    const r = await (await postRGBA(f.rgba, f.w, f.h)).json();
+    // r.task === task：切换瞬间在途的旧任务帧直接丢弃，不画
+    if (r.objs && r.task === task) {
+      errStreak = 0;
+      view = { k: ov.clientWidth / f.w, padX: f.padX, padY: f.padY };
+      const tD = performance.now();
+      drawResults(r.objs);
+      updateChips(r.ms, r.n, capMs + (performance.now() - tD), `${vw}×${vh}`);
+    } else if (r.error) {
+      if (++errStreak >= 3) { toast("推理失败：" + r.error); stopLoop(); return; }
+    }
+  } catch (e) {
+    if (++errStreak >= 3) { toast("网络/引擎异常，已停止"); stopLoop(); return; }
+  }
+  // 只在仍是运行态时续链：任务切换的暂停窗口里，在途旧帧到此为止，
+  // 不然会和 switchTask 恢复的新链并发成双环路
+  if (loopOn) setTimeout(loop, 0);
+}
+
+async function startLoop() {
+  if (running) return;
+  $("loading").classList.remove("hidden");
+  if (!await engineReady()) { $("loading").classList.add("hidden"); return; }
+  const stream = await openCamera();
+  if (!stream) { $("loading").classList.add("hidden"); toast("摄像头打不开"); return; }
+  cam.srcObject = stream;
+  await new Promise(r => { cam.onloadedmetadata = r; });
+  cam.play().catch(() => {});  // video 已隐藏，显式保活解码
+  stage.className = "stage cam";
+  $("idleHint").classList.add("hidden");
+  $("loading").classList.add("hidden");
+  running = true; loopOn = true; fpsEma = 0; lastFrameAt = 0;
+  $("btnStart").disabled = true;
+  $("btnStop").disabled = false;
+  loop();
+}
+
+function stopLoop() {
+  loopOn = false; running = false;
+  if (cam.srcObject) {
+    cam.srcObject.getTracks().forEach(t => t.stop());
+    cam.srcObject = null;
+  }
+  stage.className = "stage";
+  $("idleHint").classList.remove("hidden");
+  octx.clearRect(0, 0, ov.width, ov.height);
+  $("chipFps").innerHTML = "FPS <b>—</b>"; $("chipMs").innerHTML = "引擎 <b>—</b>";
+  $("chipBr").innerHTML = "页面 <b>—</b>"; $("chipN").innerHTML = "目标 <b>—</b>";
+  $("btnStart").disabled = false;
+  $("btnStop").disabled = true;
+}
+
+// ── 传图模式 ─────────────────────────────────────────────────────────
+let lastPhotoBlob = null;  // 最近一张上传图：切任务后直接用它重推
+async function processImage(blob) {
+  lastPhotoBlob = blob;
+  uploading = true;
+  $("loading").classList.remove("hidden");
+  try {
+    if (!await engineReady()) return;
+    const url = URL.createObjectURL(blob);
+    const im = new Image();
+    await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = url; });
+    // 统一转 JPEG 走引擎（PNG/BMP 等也一致）
+    const cv = document.createElement("canvas");
+    cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+    cv.getContext("2d").drawImage(im, 0, 0);
+    const dataURL = cv.toDataURL("image/jpeg", 0.9);
+    URL.revokeObjectURL(url);
+    photo.src = dataURL;
+    stage.className = "stage photo";
+    $("idleHint").classList.add("hidden");
+    await new Promise(r => { photo.onload = r; photo.onerror = r; });
+    const r = await (await postJPEG(dataURL)).json();
+    if (r.error) { toast("推理失败：" + r.error); return; }
+    view = { k: ov.clientWidth / r.w, padX: 0, padY: 0 };  // 上传图无 letterbox，原图空间直映
+    drawResults(r.objs || []);
+    updateChips(r.ms, r.n || 0);
+    lastFrameAt = 0;
+  } finally {
+    uploading = false;
+    $("loading").classList.add("hidden");
+  }
+}
+
+$("file").addEventListener("change", async () => {
+  const f = $("file").files[0];
+  $("file").value = "";
+  if (!f) return;
+  if (running) stopLoop();
+  await processImage(f);
+});
+
+// 页面打开时采纳引擎当前已加载的任务（引擎任务是粘性的：
+// 刷新页面/开新窗口时引擎可能还在 pose/det，若页面仍假设 seg，
+// 摄像头环路会因 r.task !== task 永远丢帧）——?task= 钩子随后可再覆盖
+const taskSynced = (async () => {
+  try {
+    const r = await (await fetch("/api/status")).json();
+    if (r.state === "ready" && r.task && r.task !== task) {
+      const btn = document.querySelector(`.tab[data-task="${r.task}"]`);
+      if (btn) {
+        task = r.task;
+        document.querySelectorAll(".tab[data-task]").forEach(b =>
+          b.classList.toggle("on", b === btn));
+        $("footTask").innerHTML = FOOT_TEXT[r.task] || FOOT_TEXT.seg;
+      }
+    }
+  } catch (e) { /* 服务未起，走默认 */ }
+})();
+
+// 测试钩子：?img=名字&task=pose —— 自动切任务并跑一张金标准图（不碰摄像头）
+(async () => {
+  const q = new URLSearchParams(location.search);
+  if (!q.get("img")) return;
+  await taskSynced;  // 必须等采纳完：不然 task 还是默认 seg，「切 seg」会被短路
+  const t = q.get("task");
+  if (t && t !== task) {
+    const btn = document.querySelector(`.tab[data-task="${t}"]`);
+    if (btn) await switchTask(t, btn);
+  }
+  const r = await fetch(`/api/img/${encodeURIComponent(q.get("img"))}`);
+  if (!r.ok) { toast("测试图不存在"); return; }
+  await processImage(await r.blob());
+})();
+
+$("btnStart").addEventListener("click", startLoop);
+$("btnStop").addEventListener("click", stopLoop);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) fitOverlay(); });
+window.addEventListener("pagehide", () => {
+  navigator.sendBeacon("/api/bye");
+});
+// 顺手触发模型预加载
+fetch("/api/status").catch(() => {});
+// 心跳（5s）：页面开着服务就活着；后台标签被限流到 1 次/分钟也远够
+setInterval(() => fetch("/api/beat").catch(() => {}), 5000);
+</script>
+</body>
+</html>

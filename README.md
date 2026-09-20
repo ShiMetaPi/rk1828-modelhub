@@ -70,6 +70,8 @@ Qwen3-ASR，麦克风录音或上传音频，转写过程逐轮流式出字幕�
 **[→ asr/README.md](asr/README.md)**
 
 </td>
+</tr>
+<tr>
 <td width="50%" align="center" valign="top">
 
 ### 📏 深度相机

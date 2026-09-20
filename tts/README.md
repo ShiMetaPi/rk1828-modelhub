@@ -2,11 +2,6 @@
 
 # 🔊 Qwen3-TTS 语音合成 Demo
 
-![端口](https://img.shields.io/badge/%E7%AB%AF%E5%8F%A3-8088-0e7490.svg)
-![板上编译](https://img.shields.io/badge/C%2B%2B%20%C2%B7%20%E6%9D%BF%E4%B8%8A%E7%BC%96%E8%AF%91-1e293b.svg)
-![语气指令](https://img.shields.io/badge/%E8%AF%AD%E6%B0%94%E6%8C%87%E4%BB%A4%20%C2%B7%209%20%E9%9F%B3%E8%89%B2-1e293b.svg)
-![声音模仿](https://img.shields.io/badge/%E5%A3%B0%E9%9F%B3%E6%A8%A1%E4%BB%BF%20%C2%B7%20%E5%85%8B%E9%9A%86%E8%87%AA%E5%AE%9A%E4%B9%89%E9%9F%B3%E8%89%B2-8b5cf6.svg)
-
 输入一段文字，浏览器里点一下就能听合成语音。还能用一句自然语言控制语气（「用开心激动的语气说」「用悲伤带哭腔的语气说」），切换 9 个预置音色（含四川话、北京话），以及**用自己的声音合成**——给一段 5~10 秒的参考录音，就能克隆出同名音色。
 
 <img src="../docs/img/tts_demo.png" alt="语音合成 demo 界面" width="560">
@@ -79,15 +74,5 @@ ssh root@<板子IP> "sh /root/tts_demo/start.sh"
 | 点按钮没反应 / 提示「服务已退出」 | 服务退出过（页面曾全部关闭）。页面开着时每 5s 心跳保活、不会退；重跑 `sh start.sh` 后刷新页面即可 |
 | 生成报错 | `/tmp/tts_engine.stdout`（C++ 引擎）和网页壳日志 |
 | 中文乱码 | 别用 Windows 本地 curl 直接发中文（控制台编码问题），走浏览器或板上 curl |
-
-</details>
-
-<details>
-<summary><b>一些已知行为</b></summary>
-
-- 页面驱动生命周期：页面开着每 5s 心跳保活（多开标签页互不影响，关掉其中一个不会误杀）；页面全部关闭 → 释放 NPU、10s 后服务退出，重跑 start.sh 即可
-- 语气指令走的是 talker 的 instruct 通道（`<|im_start|>user\n{指令}<|im_end|>` 拼在 prefill 最前），只在 1.7B CustomVoice 上有效
-- 音色三组：9 个预置（spk_id 表）、内置克隆向量（girl_base 默认 / ahu）、上传的自定义克隆（`voices/*.npy`，运行时加载）；不选则默认 girl_base
-- 输出 `/tmp/tts_out_<qid>.wav`，RIFF WAVE PCM16 mono 24000Hz
 
 </details>

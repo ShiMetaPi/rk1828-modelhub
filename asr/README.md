@@ -2,11 +2,6 @@
 
 # 📝 Qwen3-ASR 语音字幕
 
-![端口](https://img.shields.io/badge/%E7%AB%AF%E5%8F%A3-8090-0e7490.svg)
-![官方二进制](https://img.shields.io/badge/%E5%AE%98%E6%96%B9%E4%BA%8C%E8%BF%9B%E5%88%B6%20%C2%B7%20%E6%97%A0%E9%9C%80%E7%BC%96%E8%AF%91-1e293b.svg)
-![流式字幕](https://img.shields.io/badge/%E8%BE%B9%E8%BD%AC%E8%BE%B9%E5%87%BA%E5%AD%97%20%C2%B7%20%E9%BB%91%E5%AD%97%E5%B7%B2%E7%A1%AE%E8%AE%A4%20%E7%81%B0%E5%AD%97%E8%BF%98%E5%9C%A8%E6%94%B9-6366f1.svg)
-![双模式](https://img.shields.io/badge/%E9%BA%A6%E5%85%8B%E9%A3%8E%E5%BD%95%E9%9F%B3%20%2B%20%E4%B8%8A%E4%BC%A0%E9%9F%B3%E9%A2%91-8b5cf6.svg)
-
 对着麦克风说一段话，停止后**字幕像打字一样逐轮流出来**：已经确定的句子是黑色正文、固定不动越来越长；正在识别的那半句先用灰色草稿显示，随语音不断修正、改准了才「转正」变黑。也可以上传音频文件（wav/mp3/flac/m4a…），效果相同。
 
 <img src="../docs/img/asr_demo.png" alt="语音字幕 demo 界面" width="560">
@@ -60,17 +55,5 @@ ssh root@<板子IP> "sh /root/asr_demo/start.sh"
 | 提示 NPU 被占用 | 其他 demo 页面还开着，关掉它再提交 |
 | 上传后提示解码失败 | 换常见格式（wav/mp3）；m4a/ogg 取决于浏览器解码器 |
 | 转写结果是空的 | 音频太短或没人声；录长一点（≥3 秒清晰人声） |
-
-</details>
-
-<details>
-<summary><b>一些实现细节</b></summary>
-
-- 引擎用 `stdbuf -oL` 行缓冲启动官方二进制——它是块缓冲的，不加这个整段转写会一次性涌出来，没有逐轮流式效果
-- 浏览器负责音频标准化：MediaRecorder/文件 → `decodeAudioData` → `OfflineAudioContext` 重采样 16kHz 单声道 → PCM16 WAV 上传，板上不需要 sox/ffmpeg
-- SSE 协议：`phase`（加载中）/ `round`（第 N 轮）/ `commit`（定稿追加）/ `unfix`（未定稿刷新）/ `perf` / `final`（全文，权威结果，结束后整段替换）
-- 事件带 `jid`，页面只渲染自己提交的任务；断线 EventSource 自动重连
-- core_mask 两级都 `0xFF`（8 核转换的模型，单核 mask 会报 `not match with npu core number 8`）
-- 官方包里的离线版二进制（`rknn_qwen3_asr_demo`）和 `encoder.rknn/weight` 没用到——online 版本身就带流式输出且精度路径相同
 
 </details>

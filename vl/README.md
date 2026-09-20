@@ -2,10 +2,6 @@
 
 # 📷 Qwen2.5-VL-3B 视频问答 Demo
 
-![端口](https://img.shields.io/badge/%E7%AB%AF%E5%8F%A3-8080-0e7490.svg)
-![板上编译](https://img.shields.io/badge/C%2B%2B%20%C2%B7%20%E6%9D%BF%E4%B8%8A%E7%BC%96%E8%AF%91-1e293b.svg)
-![摄像头](https://img.shields.io/badge/UVC%20%E6%91%84%E5%83%8F%E5%A4%B4%20%C2%B7%20%E5%AE%9E%E6%97%B6%E9%97%AE%E7%AD%94-1e293b.svg)
-
 接一个 USB 摄像头，浏览器里看实时画面，对着画面打字提问，回答流式蹦出来。
 
 <img src="../docs/img/vl_demo.png" alt="视频问答 demo 界面" width="560">

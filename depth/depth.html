@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>深度相机 · Depth-Anything-V3</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 36px 16px;
+  }
+  .wrap { width: min(960px, 96vw); }
+  h1 { font-size: 22px; font-weight: 600; color: #fff; }
+  .subtitle { font-size: 13px; color: #888; margin: 6px 0 26px; }
+  .sources { display: flex; gap: 14px; flex-wrap: wrap; }
+  .src-card {
+    background: #1a1d27;
+    border-radius: 14px;
+    padding: 22px;
+    flex: 1 1 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .src-title { font-size: 14px; color: #c3c6dd; font-weight: 600; }
+  .src-hint { font-size: 12px; color: #777; line-height: 1.7; }
+
+  #video {
+    width: 100%;
+    aspect-ratio: 1 / 1;   /* 方形取景 = 模型看到的中心方裁剪，所见即所得 */
+    object-fit: cover;
+    background: #14161e;
+    border-radius: 10px;
+    display: block;
+  }
+  .no-cam {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #14161e;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    font-size: 13px;
+  }
+  .cam-row { display: flex; align-items: center; gap: 16px; }
+  .shot-btn {
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid #4a4d66; background: #20232f;
+    cursor: pointer; transition: all .2s; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .shot-btn .dot { width: 26px; height: 26px; border-radius: 50%; background: #e05555; transition: all .15s; }
+  .shot-btn:hover:not(:disabled) { border-color: #6a4d4d; transform: scale(1.04); }
+  .shot-btn:active:not(:disabled) .dot { transform: scale(.82); }
+  .shot-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .drop {
+    border: 1.5px dashed #3a3d52; border-radius: 10px;
+    padding: 30px 16px; text-align: center; font-size: 13px; color: #8a8da5;
+    cursor: pointer; transition: border-color .2s, background .2s;
+  }
+  .drop:hover, .drop.over { border-color: #6366f1; background: #20232f; }
+  .drop input { display: none; }
+
+  .bar {
+    margin-top: 14px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 20px; border-radius: 14px;
+    background: #14161e; font-size: 12px; color: #8a8da5;
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+  .status-dot.busy { background: #e0a955; animation: blink 1s ease-in-out infinite; }
+  .status-dot.err  { background: #f87171; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .chip { background: #20232f; border-radius: 6px; padding: 3px 9px; font-variant-numeric: tabular-nums; }
+  .bar .spacer { flex: 1; }
+  .msg { font-variant-numeric: tabular-nums; }
+  .msg.err { color: #f87171; }
+  .msg.ok  { color: #4ade80; }
+
+  #results { margin-top: 14px; display: flex; flex-direction: column; gap: 14px; }
+  .shot {
+    background: #1a1d27; border-radius: 14px; padding: 18px 20px;
+    animation: fadein .5s ease;
+  }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+  .shot-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; font-size: 12px; color: #8a8da5; flex-wrap: wrap; }
+  .shot-head .n { font-size: 14px; color: #c3c6dd; font-weight: 600; }
+  .shot-head .spacer { flex: 1; }
+  .pair { display: flex; gap: 10px; }
+  .pair figure { flex: 1; min-width: 0; }
+  .pair img {
+    width: 100%; border-radius: 8px; display: block; cursor: zoom-in;
+    background: #14161e;
+  }
+  .pair figcaption { font-size: 11px; color: #666; text-align: center; margin-top: 6px; }
+  .ov-title { font-size: 11px; color: #666; margin: 14px 0 6px; text-align: center; }
+  .ov-wrap { display: flex; gap: 10px; max-width: 620px; margin: 0 auto; align-items: stretch; }
+  .ov-box { position: relative; flex: 1; min-width: 0; border-radius: 8px; overflow: hidden; }
+  .ov-box img { width: 100%; display: block; }
+  .ov-box .top { position: absolute; inset: 0; }
+  .cbar { width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #8a8da5; flex-shrink: 0; }
+  .cbar .lab { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .cbar .grad { flex: 1; width: 14px; border-radius: 4px; border: 1px solid #2a2d3d; }
+  .ov-ctl { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 12px; color: #8a8da5; max-width: 620px; margin-left: auto; margin-right: auto; }
+  .ov-ctl input[type=range] { flex: 1; accent-color: #e05555; }
+  .dl { font-size: 11px; color: #7c7f96; text-decoration: none; border: 1px solid #3a3d52; border-radius: 6px; padding: 2px 8px; }
+  .dl:hover { color: #c3c6dd; border-color: #6a6d86; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>深度相机</h1>
+  <p class="subtitle">Depth-Anything-V3 · RKNN 加速 · 拍一张出一对：原图 + 相对深度图（近红远蓝，非绝对米数）</p>
+
+  <div class="sources">
+    <div class="src-card">
+      <div class="src-title">摄像头拍摄</div>
+      <video id="video" autoplay playsinline muted style="display:none"></video>
+      <div class="no-cam" id="noCam">正在打开摄像头…</div>
+      <div class="cam-row">
+        <button class="shot-btn" id="shotBtn" title="拍摄" disabled><div class="dot"></div></button>
+        <div class="src-hint">点圆点拍摄取景框内的方形画面，出「原图 vs 深度图」+ 叠加对比。首次拍摄要加载模型（约十几秒），之后每张约 1 秒。</div>
+      </div>
+    </div>
+
+    <div class="src-card">
+      <div class="src-title">上传图片</div>
+      <label class="drop" id="drop">
+        点这里选图片，或把图片拖进来
+        <input type="file" id="file" accept="image/*">
+      </label>
+      <div class="src-hint">没有摄像头也能玩：任意 JPG/PNG 上传（自动取中央方形区域），同样出深度图。图片只在板子上处理。</div>
+    </div>
+  </div>
+
+  <div class="bar">
+    <div class="status-dot" id="dot"></div>
+    <span id="stateTxt">连接服务中…</span>
+    <span class="chip" id="resChip" style="display:none"></span>
+    <div class="spacer"></div>
+    <span class="msg" id="msg"></span>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+const video   = document.getElementById("video");
+const noCam   = document.getElementById("noCam");
+const shotBtn = document.getElementById("shotBtn");
+const drop    = document.getElementById("drop");
+const fileIn  = document.getElementById("file");
+const dot     = document.getElementById("dot");
+const stateTxt= document.getElementById("stateTxt");
+const resChip = document.getElementById("resChip");
+const msg     = document.getElementById("msg");
+const results = document.getElementById("results");
+
+let serviceUp = false;
+let busy = false;
+let shotN = 0;
+
+function setMsg(t, ok=false, err=false) {
+  msg.textContent = t;
+  msg.className = "msg" + (ok ? " ok" : err ? " err" : "");
+}
+function setState(txt, mode) {  // mode: "" | busy | err
+  stateTxt.textContent = txt;
+  dot.className = "status-dot" + (mode === "busy" ? " busy" : mode === "err" ? " err" : "");
+}
+
+// ── 摄像头 ──────────────────────────────────────────────────────────
+let camDeviceId = null;   // 试出来的可用设备（记住后刷新也直接用）
+
+async function tryOpenCamera(constraints) {
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  // 拿到流才算这个设备真能出图（板上有 20 个 video 节点，多数是 ISP，起不动流）
+  if (stream.getVideoTracks().length === 0) {
+    stream.getTracks().forEach(t => t.stop());
+    throw new Error("无视频轨");
+  }
+  return stream;
+}
+
+async function startCamera() {
+  if (!navigator.mediaDevices || !window.isSecureContext) {
+    noCam.textContent = "此环境不允许摄像头（需板上浏览器或 localhost），请用右侧上传图片";
+    return;
+  }
+  const base = { width: { ideal: 1280 }, height: { ideal: 960 } };
+  // 依次尝试：记住的设备 → 默认 → 枚举出的每个视频设备
+  const attempts = [];
+  if (camDeviceId) attempts.push({ video: { deviceId: { exact: camDeviceId }, ...base }, audio: false });
+  attempts.push({ video: { ...base }, audio: false });
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    for (const d of devs)
+      if (d.kind === "videoinput" && d.deviceId !== camDeviceId)
+        attempts.push({ video: { deviceId: { exact: d.deviceId }, ...base }, audio: false });
+  } catch {}
+  for (const c of attempts) {
+    try {
+      const stream = await tryOpenCamera(c);
+      camDeviceId = stream.getVideoTracks()[0].getSettings().deviceId || camDeviceId;
+      video.srcObject = stream;
+      video.style.display = "";
+      noCam.style.display = "none";
+      shotBtn.disabled = false;
+      return;
+    } catch (e) { /* 换下一个设备 */ }
+  }
+  noCam.textContent = "摄像头打开失败：所有视频设备都起不动（确认 USB 摄像头插好），请用右侧上传图片";
+}
+startCamera();
+
+// 任意源（video 帧 / 上传文件）→ 中心方裁剪 → 归一化 JPEG
+// 模型输入是固定 280×280 方形，取画面正中的正方形区域：原图和深度图同构图不变形
+async function sourceToJpeg(src, w, h) {
+  const side = Math.min(w, h);
+  const sx = (w - side) / 2, sy = (h - side) / 2;
+  const scale = Math.min(1, 1280 / side);
+  const c = document.createElement("canvas");
+  c.width = c.height = Math.max(1, Math.round(side * scale));
+  c.getContext("2d").drawImage(src, sx, sy, side, side, 0, 0, c.width, c.height);
+  return await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+}
+
+// ── 提交 + 渲染 ─────────────────────────────────────────────────────
+async function submit(blob, originalUrl) {
+  if (busy) { setMsg("正在处理上一张，稍等", err=true); return; }
+  busy = true;
+  shotBtn.disabled = true;
+  shotN += 1;
+  const n = shotN;
+  setMsg("第 " + n + " 张推理中…");
+  setState("推理中", "busy");
+  try {
+    const r = await fetch("/api/capture", { method: "POST", body: blob });
+    if (!r.ok) {
+      let e = "HTTP " + r.status;
+      try { e = (await r.json()).error || e; } catch {}
+      throw new Error(e);
+    }
+    const stats = JSON.parse(r.headers.get("X-Depth-Stats") || "{}");
+    const depthUrl = URL.createObjectURL(await r.blob());
+    addShot(n, originalUrl, depthUrl, stats);
+    const ms = stats.ms || {};
+    setMsg("第 " + n + " 张完成 · " + Math.round(ms.total || 0) + "ms"
+      + "（local " + Math.round(ms.local || 0) + " / global " + Math.round(ms.global || 0)
+      + " / head " + Math.round(ms.head || 0) + "）", ok=true);
+    setState("就绪", "");
+  } catch (e) {
+    setMsg("失败: " + e.message, err=true);
+    setState("出错", "err");
+  } finally {
+    busy = false;
+    shotBtn.disabled = false;
+  }
+}
+
+// turbo 色表（与引擎同一组多项式，保证色条和深度图颜色一致）
+function turboCss(t) {
+  const x = Math.min(1, Math.max(0, t));
+  const x2 = x*x, x3 = x2*x, x4 = x3*x, x5 = x4*x;
+  const cl = v => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  const r = cl(0.13572138 + 4.61539260*x - 42.66032258*x2 + 132.13108234*x3 - 152.94239396*x4 + 59.28637943*x5);
+  const g = cl(0.09140261 + 2.19418839*x + 4.84296658*x2 - 14.18503333*x3 + 4.27729857*x4 + 2.82956604*x5);
+  const b = cl(0.10667330 + 12.64194608*x - 60.58204836*x2 + 110.36276771*x3 - 89.90310912*x4 + 27.34824973*x5);
+  return `rgb(${r},${g},${b})`;
+}
+function turboGradient(stops) {
+  const cs = [];
+  for (let i = 0; i <= stops; i++) {
+    const t = i / stops;
+    cs.push(turboCss(1 - t) + " " + Math.round(t * 100) + "%");  // 顶部红(近) → 底部蓝(远)
+  }
+  return "linear-gradient(to bottom, " + cs.join(",") + ")";
+}
+
+function addShot(n, originalUrl, depthUrl, stats) {
+  const div = document.createElement("div");
+  div.className = "shot";
+  const mrow = [];
+  // DA3-BASE 输出相对深度（无米制量纲），不标假米数，只标耗时
+  if (stats.ms) mrow.push("耗时 " + Math.round(stats.ms.total || 0) + "ms");
+  div.innerHTML =
+    '<div class="shot-head">'
+    + '<span class="n">第 ' + n + ' 张</span>'
+    + '<span>' + (mrow.join(" · ") || "") + '</span>'
+    + '<span class="spacer"></span>'
+    + '<a class="dl" download="depth_' + n + '_rgb.jpg" href="' + originalUrl + '">存原图</a>'
+    + '<a class="dl" download="depth_' + n + '_depth.png" href="' + depthUrl + '">存深度图</a>'
+    + '</div>'
+    + '<div class="pair">'
+    + '<figure><img src="' + originalUrl + '" alt="原图"><figcaption>原图（中心方裁剪）</figcaption></figure>'
+    + '<figure><img src="' + depthUrl + '" alt="深度图"><figcaption>深度图（近红远蓝）</figcaption></figure>'
+    + '</div>'
+    + '<div class="ov-title">叠加对比（拖滑块混合原图和深度图，右侧色条=相对远近）</div>'
+    + '<div class="ov-wrap">'
+    + '<div class="ov-box">'
+    + '<img src="' + originalUrl + '" alt="原图">'
+    + '<img class="top" id="ov' + n + '" src="' + depthUrl + '" alt="深度图" style="opacity:.5">'
+    + '</div>'
+    + '<div class="cbar">'
+    + '<span class="lab" style="color:#e07a5f">近</span>'
+    + '<div class="grad" title="相对深度：越红越近，越蓝越远（DA3-BASE 不输出绝对米数）"></div>'
+    + '<span class="lab" style="color:#7a9fd6">远</span>'
+    + '</div>'
+    + '</div>'
+    + '<div class="ov-ctl">'
+    + '<span>原图</span>'
+    + '<input type="range" min="0" max="100" value="50">'
+    + '<span>深度图</span>'
+    + '</div>';
+  div.querySelectorAll(".pair img").forEach(im => im.addEventListener("click", () => window.open(im.src)));
+  div.querySelector(".grad").style.background = turboGradient(24);
+  const top = div.querySelector(".top");
+  div.querySelector('input[type=range]').addEventListener("input", e => {
+    top.style.opacity = e.target.value / 100;
+  });
+  results.insertBefore(div, results.firstChild);
+}
+
+// ── 拍摄 / 上传 ─────────────────────────────────────────────────────
+shotBtn.addEventListener("click", () => {
+  if (!video.videoWidth) { setMsg("摄像头还没准备好", err=true); return; }
+  sourceToJpeg(video, video.videoWidth, video.videoHeight).then(b => {
+    // 原图预览也用同一帧，和送进模型的内容完全一致
+    submit(b, URL.createObjectURL(b));
+  });
+});
+
+async function handleFile(f) {
+  if (!f) return;
+  if (busy) { setMsg("正在处理上一张，稍等", err=true); return; }
+  if (!/^image\//.test(f.type)) { setMsg("不是图片文件", err=true); return; }
+  setMsg("读取 " + f.name + " …");
+  const img = new Image();
+  img.onload = async () => {
+    const b = await sourceToJpeg(img, img.naturalWidth, img.naturalHeight);
+    URL.revokeObjectURL(img.src);
+    submit(b, URL.createObjectURL(b));
+  };
+  img.onerror = () => setMsg("图片解码失败", err=true);
+  img.src = URL.createObjectURL(f);
+}
+fileIn.addEventListener("change", () => handleFile(fileIn.files[0]));
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => {
+  e.preventDefault(); drop.classList.remove("over");
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// ── 服务探活 + 心跳 + 生命周期（与 asr/tts demo 同款）──────────────
+async function pollStatus() {
+  try {
+    const r = await fetch("/api/status");
+    if (r.ok) {
+      if (!serviceUp) {
+        serviceUp = true;
+        const s = await r.json();
+        setMsg("服务已连接");
+      }
+      heartbeat();
+      return;
+    }
+  } catch {}
+  serviceUp = false;
+  setState("连接服务中…", "busy");
+  setTimeout(pollStatus, 2000);
+}
+async function heartbeat() {
+  try {
+    const r = await fetch("/api/status");
+    if (r.ok) {
+      const s = await r.json();
+      if (s.state === "ready") {
+        setState("就绪", "");
+        if (s.res) { resChip.style.display = ""; resChip.textContent = s.res + " · " + (s.views || 1) + " view"; }
+      } else if (s.state === "loading") {
+        setState("模型加载中（首次约十几秒）", "busy");
+      } else if (s.state === "error") {
+        setState("模型加载失败", "err");
+      }
+    }
+    setTimeout(heartbeat, 5000);
+  } catch {
+    serviceUp = false;
+    setState("服务已退出，请重新运行 start.sh 后刷新", "err");
+  }
+}
+window.addEventListener("pageshow", () => { pollStatus(); });
+window.addEventListener("pagehide", () => { navigator.sendBeacon("/api/bye"); });
+</script>
+</body>
+</html>

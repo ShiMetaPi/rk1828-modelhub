@@ -14,6 +14,8 @@ __pycache__/
 # 编译产物
 vl_engine
 vl_engine.*
+depth_engine
+build/
 
 # 网卡限速等内部工具不放仓库
 resume_push.py

@@ -22,15 +22,14 @@
 ## 跑起来
 
 ```bash
-# 传到板子
-ssh root@<板子IP> "mkdir -p /root/chat_web"
-scp -r chat/chat_web/* chat/minicpm5.jinja root@<板子IP>:/root/chat_web/
+# 传到板子（同其他 demo：整个 chat/ 目录 → /root/chat_demo）
+tar cf - --exclude='__pycache__' -C chat . | ssh root@<板子IP> "mkdir -p /root/chat_demo && tar xf - -C /root/chat_demo"
 
-# 放好聊天模板（跑过 models 部署脚本的话可跳过这步）
-ssh root@<板子IP> "mkdir -p /root/rknn_MiniCPM5_2B_demo && cp /root/chat_web/minicpm5.jinja /root/rknn_MiniCPM5_2B_demo/"
+# 拉模型（跑过的话可跳过；会把聊天模板 minicpm5.jinja 一并放好）
+ssh root@<板子IP> "cd /root/chat_demo && GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh deploy.sh"
 
 # 启动（这时只起了网页壳，还没加载模型）
-ssh root@<板子IP> "sh /root/chat_web/start.sh"
+ssh root@<板子IP> "sh /root/chat_demo/start.sh"
 ```
 
 运行后板子浏览器自动打开页面（约 2 秒），模型在页面打开后才开始加载，等十几秒就能聊了；也可手动开 **http://<板子IP>:8089**。
@@ -48,7 +47,7 @@ ssh root@<板子IP> "sh /root/chat_web/start.sh"
 ## 停掉
 
 ```bash
-ssh root@<板子IP> "sh /root/chat_web/start.sh stop"
+ssh root@<板子IP> "sh /root/chat_demo/start.sh stop"
 ```
 
 <details>

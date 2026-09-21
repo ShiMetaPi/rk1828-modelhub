@@ -119,4 +119,4 @@ if [ "$want_w4" = 1 ] && [ -f "$HERE/minicpm5.jinja" ]; then
 fi
 
 echo
-echo "全部完成。启动:  cd /root/chat_web && sh start.sh"
+echo "全部完成。启动:  cd /root/chat_demo && sh start.sh"

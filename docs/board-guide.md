@@ -65,15 +65,11 @@ for t in models-vl models-tts models-asr models-depth models-yolo26 models-chat;
 done
 
 # 3. 推代码到板子（Windows 注意：推完要在板子上补 chmod +x，见下）
-for pair in "vl vl" "tts tts" "asr asr" "depth depth" "yolo26 yolo26"; do
+for pair in "vl vl" "tts tts" "asr asr" "depth depth" "yolo26 yolo26" "chat chat"; do
   set -- $pair
   tar cf - --exclude='__pycache__' -C $1 . | \
     ssh root@169.254.62.200 "mkdir -p /root/$2_demo && tar xf - -C /root/$2_demo"
 done
-
-# chat 布局不同：网页 + deploy.sh 平铺进 /root/chat_web
-tar cf - --exclude='__pycache__' -C chat/chat_web . -C .. deploy.sh minicpm5.jinja | \
-  ssh root@169.254.62.200 "mkdir -p /root/chat_web && tar xf - -C /root/chat_web"
 
 # 4. 起本地模型服务 + 反向隧道（板子离线，deploy.sh 的下载走这条隧道）
 python -m http.server 8000 -d release_mirror &
@@ -92,7 +88,7 @@ cd /root/tts_demo    && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-tts 
 cd /root/asr_demo    && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-asr    sh deploy.sh
 cd /root/depth_demo  && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-depth  sh deploy.sh
 cd /root/yolo26_demo && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-yolo26 sh deploy.sh
-cd /root/chat_web    && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-chat  sh deploy.sh   # w4 / w8 / all 可选，默认 all
+cd /root/chat_demo   && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-chat  sh deploy.sh   # w4 / w8 / all 可选，默认 all
 
 # 恢复自定义音色（声音克隆的声纹文件，tts）
 mkdir -p /userdata/models/qwen3-tts/voices && cp /root/tts_demo/voices/*.npy $_/

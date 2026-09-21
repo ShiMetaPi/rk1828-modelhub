@@ -1,6 +1,6 @@
 #!/bin/sh
-# TTS Demo 启动脚本（在板子上跑）
-# 用法: sh start.sh
+# TTS Demo start script (run on the board)
+# Usage: sh start.sh
 
 set -e
 
@@ -9,29 +9,29 @@ DEMO_DIR="$(pwd)"
 MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen3-tts}"
 TTS_BIN="${DEMO_DIR}/tts_engine"
 
-# ── NPU 可用性检查 ──────────────────────────────────────────────────
+# -- NPU availability check --
 check_npu() {
   USED=$(rknn-smi | awk 'NR==3 {print $5}' | tr -d ' ')
   TOTAL=5120
   if [ -n "$USED" ]; then
-    # 去掉 MB/GB 后缀
+    # strip the MB/GB suffix
     USED_NUM=$(echo "$USED" | sed 's/MB$//; s/GB$//' | tr -d ' ')
     if echo "$USED" | grep -q GB; then
       USED_NUM=$(echo "$USED_NUM * 1000" | bc)
     fi
     if [ "$USED_NUM" -gt 200 ]; then
-      echo "[错误] NPU 被占用 (${USED})，请关闭其他 demo 页面后重试"
+      echo "[error] NPU busy (${USED}); close the other demo's page and retry"
       exit 1
     fi
   fi
 }
 
-# ── 编译 C++（如未编译） ───────────────────────────────────────────
+# -- compile C++ (if not already built) --
 if [ ! -x "$TTS_BIN" ]; then
-  echo "[tts] 首次运行，正在编译…"
+  echo "[tts] first run, compiling..."
   SDK_ROOT="/root/vl_demo/engine"
   if [ ! -d "$SDK_ROOT/sdk" ]; then
-    echo "[错误] 找不到 vl_demo SDK，请先部署 vl_demo"
+    echo "[error] vl_demo SDK not found; deploy vl_demo first"
     exit 1
   fi
   mkdir -p build
@@ -40,12 +40,12 @@ if [ ! -x "$TTS_BIN" ]; then
   make -j$(nproc)
   cd ..
   mv build/tts_engine .
-  echo "[tts] 编译完成"
+  echo "[tts] compile done"
 fi
 
-# ── 幂等：已有实例在跑则先停掉（重复运行不再报 address already in use） ──
+# -- idempotent: stop any running instance first (re-run won't hit address-already-in-use) --
 if pgrep -f '^python3 tts_engine.py$' >/dev/null 2>&1 || pgrep -x tts_engine >/dev/null 2>&1; then
-  echo "[tts] 检测到旧实例，先停止…"
+  echo "[tts] old instance detected, stopping first..."
   pkill -f '^python3 tts_engine.py$' 2>/dev/null
   pkill -x tts_engine 2>/dev/null
   sleep 2
@@ -54,10 +54,10 @@ fi
 
 check_npu
 
-# ── 启动 Python Web 服务 ─────────────────────────────────────────────
+# -- start Python web service --
 export TTS_MODEL_DIR="$MODEL_DIR"
 export TTS_BIN="$TTS_BIN"
 export TTS_SOCK="/tmp/tts_engine.sock"
 
-echo "[tts] 启动 Web 服务 :8088"
+echo "[tts] starting web service :8088"
 python3 tts_engine.py

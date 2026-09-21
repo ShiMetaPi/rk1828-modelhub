@@ -1,20 +1,20 @@
 #!/bin/sh
-# ASR demo 部署脚本（在板子上跑）
+# ASR demo deploy script (run on the board)
 #
-# 用法:
-#   sh deploy.sh（默认拉本仓库 Releases；GITHUB_REPO=owner/name 可换源）
+# Usage:
+#   sh deploy.sh  (pulls this repo's Releases by default; GITHUB_REPO=owner/name to switch source)
 #
-# 做的事:
-#   - 从 GitHub Releases 下载 ASR demo 所需的 6 个模型文件（online 版）
-#   - MD5 校验（资产名→md5 内联在脚本里）
-#   - 放到 model/ 子目录（二进制按 model/xxx 相对路径读取）
-#   - 可重复执行：已就位且校验通过的文件自动跳过
+# What it does:
+#   - Downloads the 6 model files needed by the ASR demo (online variant) from GitHub Releases
+#   - MD5 verification (asset_name -> md5 inlined in this script)
+#   - Places them under model/ (binary reads them by model/xxx relative path)
+#   - Re-runnable: files already in place and verified are skipped
 #
-# 可用环境变量覆盖默认:
-#   GITHUB_REPO    仓库（owner/name），默认 ShiMetaPi/rk1828-modelhub
-#   RELEASE_TAG    Release 标签，默认 models-asr
-#   MODEL_DIR      模型目录，默认 <脚本所在目录>/model
-#   DL_DIR         下载缓存，默认 /userdata/tmp/asr
+# Overridable via env:
+#   GITHUB_REPO     repo (owner/name), default ShiMetaPi/rk1828-modelhub
+#   RELEASE_TAG     release tag, default models-asr
+#   MODEL_DIR       model dir, default <script dir>/model
+#   DL_DIR          download cache, default /userdata/tmp/asr
 set -e
 
 REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
@@ -23,12 +23,13 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 MODEL_DIR="${MODEL_DIR:-$HERE/model}"
 DL="${DL_DIR:-/userdata/tmp/asr}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
-# MIRROR_URL 指向本地镜像根（如 http://169.254.62.175:8000），设了就直连本地拉模型、绕开外网更快
+# MIRROR_URL points to a local mirror root (e.g. http://169.254.62.175:8000); when set,
+# models are pulled directly from it, bypassing the internet for much faster downloads
 if [ -n "$MIRROR_URL" ]; then
   BASE="$MIRROR_URL/$TAG"
 fi
 
-# 资产清单：资产名|目标相对路径（平铺在 MODEL_DIR 下）
+# Asset list: asset_name|target_relative_path (flat under MODEL_DIR)
 FILES="encoder_online.rknn|encoder_online.rknn
 encoder_online.weight|encoder_online.weight
 llm.rknn|llm.rknn
@@ -36,7 +37,7 @@ llm.weight|llm.weight
 llm.tokenizer.gguf|llm.tokenizer.gguf
 llm.embed.bin|llm.embed.bin"
 
-# MD5 校验表（资产名→md5）
+# MD5 checksum table (asset_name -> md5)
 MD5="
 encoder_online.rknn|68523c90e3942758f01c52d84b9ab12a
 encoder_online.weight|d520632385f971f561fbaa87562c32c1
@@ -54,28 +55,28 @@ fetch() {
   curl -fL --retry 10 --retry-delay 3 --retry-all-errors --limit-rate 20M -C - -o "$2" "$1"
 }
 
-deploy_one() {   # $1=资产名 $2=目标绝对路径
+deploy_one() {   # $1=asset name $2=target absolute path
   name=$1; dest=$2
   want_md5=$(md5_of "$name")
-  [ -n "$want_md5" ] || { echo "✗ md5 表里没有 $name，拒绝部署"; exit 1; }
+  [ -n "$want_md5" ] || { echo "error: $name not in md5 table, aborting"; exit 1; }
 
   if [ -f "$dest" ] && echo "$want_md5  $dest" | md5sum -c - >/dev/null 2>&1; then
-    echo "✔ $dest 已存在且校验通过，跳过"
+    echo "skip: $dest already present and verified"
     return 0
   fi
   mkdir -p "$(dirname "$dest")" "$DL"
-  echo "↓ $name"
+  echo "fetching $name"
   fetch "$BASE/$name" "$DL/$name"
-  echo "$want_md5  $DL/$name" | md5sum -c - || { echo "✗ $name 校验失败，已保留在 $DL/$name"; exit 1; }
+  echo "$want_md5  $DL/$name" | md5sum -c - || { echo "error: $name checksum failed, kept at $DL/$name"; exit 1; }
   mv -f "$DL/$name" "$dest"
-  echo "✔ $dest 就位"
+  echo "ok: $dest in place"
 }
 
-echo "开始部署 ASR 模型 → $MODEL_DIR"
+echo "Deploying ASR models -> $MODEL_DIR"
 echo "$FILES" | while IFS='|' read -r name rel; do
   [ -n "$name" ] || continue
   deploy_one "$name" "$MODEL_DIR/$rel"
 done
 
 echo
-echo "全部完成。启动:  cd /root/asr_demo && sh start.sh"
+echo "Done. To start:  cd /root/asr_demo && sh start.sh"

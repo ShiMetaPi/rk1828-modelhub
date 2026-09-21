@@ -72,7 +72,8 @@ for pair in "vl vl" "tts tts" "asr asr" "depth depth" "yolo26 yolo26" "chat chat
 done
 
 # 4. 起本地模型服务 + 反向隧道（板子离线，deploy.sh 的下载走这条隧道）
-python -m http.server 8000 -d release_mirror &
+#    用 range_server 而非 python -m http.server：后者不支持 Range，断点续传会失败
+python tools/range_server.py 8000 --directory release_mirror &
 ssh -N -R 8000:localhost:8000 root@169.254.62.200 &    # 保持开着
 ```
 

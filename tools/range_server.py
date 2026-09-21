@@ -19,8 +19,8 @@ class RangeHandler(SimpleHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'    # Content-Length 两条路径都必有，可开长连接
 
     def copyfile(self, src, dst):
-        # 限速：每 2MB 歇 60ms（约 30MB/s 上限）。千兆直连链路跑满线速会掉线
-        # （Realtek 高负载 RST），板端 deploy 断点续传虽能兜底，但限速后一次过更稳。
+        # 限速：每 256KB 歇 12ms（约 20MB/s），小突发平滑输出。
+        # 板载 yt6801 网卡（RX FIFO 仅 8KB）扛不住线速突发，会掉链。
         total = 0
         while True:
             buf = src.read(1 << 18)
@@ -28,8 +28,8 @@ class RangeHandler(SimpleHTTPRequestHandler):
                 break
             dst.write(buf)
             total += len(buf)
-            if total >= (2 << 20):
-                time.sleep(0.06)
+            if total >= (1 << 18):
+                time.sleep(0.012)
                 total = 0
 
     def end_headers(self):

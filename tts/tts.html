@@ -5,184 +5,243 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Qwen3-TTS 语音合成</title>
 <style>
+  /* 蓝白 Apple 风：与 depth_apple.html 同一套设计体系——
+     系统蓝 #007aff、毛玻璃白卡、胶囊按钮、居中轻刊头、rise 进场 */
+  :root {
+    --blue: #007aff;          /* Apple 系统蓝 */
+    --blue-hover: #0066cc;
+    --blue-tint: #e8f2ff;
+    --text: #1d1d1f;          /* Apple 近黑 */
+    --text-2: #6e6e73;        /* Apple 次级灰 */
+    --text-3: #8e8e93;
+    --hairline: rgba(0, 0, 0, .08);
+    --card: rgba(255, 255, 255, .78);
+    --card-solid: rgba(255, 255, 255, .94);
+    --fill: #f2f2f7;          /* systemGray6 */
+    --shadow: 0 10px 30px rgba(15, 70, 150, .10);
+    --shadow-sm: 0 2px 10px rgba(15, 70, 150, .07);
+    --ok: #34c759; --warn: #ff9500; --err: #ff3b30;
+    --sans: -apple-system, "SF Pro Display", "Helvetica Neue", "Noto Sans CJK SC",
+            "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: #0f1117;
-    color: #e0e0e0;
+    font-family: var(--sans);
+    /* 蓝白渐变画布：顶部淡蓝晕染渐入纯白 */
+    background:
+      radial-gradient(1100px 500px at 50% -8%, rgba(120, 175, 255, .28), transparent 70%),
+      linear-gradient(180deg, #e3effc 0%, #f0f6fe 32%, #fbfdff 66%, #ffffff 100%);
+    background-attachment: fixed;
+    color: var(--text);
     min-height: 100vh;
     display: flex;
-    align-items: center;
     justify-content: center;
+    padding: 56px 20px 80px;
   }
+  ::selection { background: rgba(0, 122, 255, .18); }
+  :focus-visible { outline: 3px solid rgba(0, 122, 255, .45); outline-offset: 2px; border-radius: 6px; }
+  .wrap { width: min(720px, 100%); }
+
+  /* ── 居中轻刊头 ───────────────────────────────────────────────────── */
+  .hero { text-align: center; margin-bottom: 30px;
+          animation: rise .55s cubic-bezier(.25,.1,.25,1) both; }
+  .tag { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+         color: #0a63d2; background: var(--blue-tint);
+         padding: 5px 13px; border-radius: 9999px; margin-bottom: 14px; }
+  .hero h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.1;
+             color: var(--blue); }
+  .hero .lede { margin-top: 10px; font-size: 14.5px; color: var(--text-2); line-height: 1.6; }
+
+  /* ── 毛玻璃卡片基座 ───────────────────────────────────────────────── */
   .card {
-    background: #1a1d27;
-    border-radius: 16px;
-    padding: 40px;
-    width: min(560px, 95vw);
-    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    background: var(--card);
+    backdrop-filter: blur(20px) saturate(1.35);
+    -webkit-backdrop-filter: blur(20px) saturate(1.35);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
   }
-  h1 {
-    font-size: 22px;
-    font-weight: 600;
-    margin-bottom: 6px;
-    color: #fff;
-  }
-  .subtitle {
-    font-size: 13px;
-    color: #888;
-    margin-bottom: 32px;
-  }
-  label {
-    font-size: 13px;
-    color: #aaa;
-    margin-bottom: 8px;
-    display: block;
-  }
-  textarea {
+
+  /* ── 合成主卡：文本 / 语气 / 音色 / 克隆 / CTA ────────────────────── */
+  .compose { padding: 26px 28px; display: flex; flex-direction: column; gap: 20px;
+             animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .07s; }
+  .f-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-2);
+             letter-spacing: .02em; margin-bottom: 8px; }
+
+  /* 输入控件：白底实卡、hairline 边、圆角 12、focus 蓝 */
+  .field {
     width: 100%;
-    height: 120px;
-    background: #252836;
-    border: 1px solid #33364a;
-    border-radius: 10px;
-    color: #e0e0e0;
-    font-size: 15px;
-    padding: 14px;
-    resize: none;
-    outline: none;
-    transition: border-color .2s;
+    background: var(--card-solid);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 14.5px;
     font-family: inherit;
-  }
-  textarea:focus { border-color: #6366f1; }
-  input[type="text"], select {
-    width: 100%;
-    background: #252836;
-    border: 1px solid #33364a;
-    border-radius: 10px;
-    color: #e0e0e0;
-    font-size: 14px;
-    padding: 11px 14px;
+    padding: 12px 14px;
     outline: none;
-    transition: border-color .2s;
-    font-family: inherit;
-    margin-bottom: 18px;
+    transition: border-color .2s, box-shadow .2s;
   }
-  input[type="text"]:focus, select:focus { border-color: #6366f1; }
-  .voice-box {
-    margin-top: 14px;
-    padding: 14px;
-    background: #20232f;
-    border: 1px dashed #3a3d52;
-    border-radius: 10px;
+  .field::placeholder { color: var(--text-3); }
+  .field:focus { border-color: var(--blue); box-shadow: 0 0 0 3.5px rgba(0, 122, 255, .13); }
+  textarea.field { height: 120px; resize: none; line-height: 1.7; font-size: 15px; }
+
+  /* 音色下拉：appearance:none + 自绘箭头（单文件自包含，无外链资源） */
+  .selwrap { position: relative; }
+  .selwrap::after {
+    content: ""; position: absolute; right: 17px; top: 50%;
+    width: 8px; height: 8px; pointer-events: none;
+    border-right: 1.8px solid var(--text-3); border-bottom: 1.8px solid var(--text-3);
+    transform: translateY(-70%) rotate(45deg); border-radius: 1px;
   }
-  .vb-title {
-    font-size: 12px;
-    color: #8a8da5;
-    margin-bottom: 10px;
-    line-height: 1.6;
+  select.sel {
+    appearance: none; -webkit-appearance: none;
+    padding-right: 40px; cursor: pointer;
   }
-  .voice-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
+
+  /* 次级按钮：灰底胶囊（录音 / 提取 / 上传 / 删除音色） */
+  .ghost {
+    border: 0; background: var(--fill); color: var(--text);
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    padding: 9px 16px; border-radius: 9999px; cursor: pointer;
+    transition: background .2s, transform .15s;
   }
-  .voice-row input[type="text"] { flex: 1; min-width: 130px; margin-bottom: 0; }
-  .voice-row input[type="file"] { font-size: 12px; color: #aaa; max-width: 210px; }
-  button.ghost {
-    background: transparent;
-    border: 1px solid #4a4d66;
-    color: #c3c6dd;
-    padding: 10px 16px;
-    font-size: 13px;
+  .ghost:hover:not(:disabled) { background: #e8e8ed; }
+  .ghost:active:not(:disabled) { transform: scale(.97); }
+  .ghost:disabled { opacity: .45; cursor: not-allowed; }
+  .danger { background: rgba(255, 59, 48, .07); color: var(--err);
+            box-shadow: inset 0 0 0 1px rgba(255, 59, 48, .30); }
+  .danger:hover:not(:disabled) { background: rgba(255, 59, 48, .13); }
+
+  /* 声音克隆面板：内嵌浅灰区 */
+  .voice-box { padding: 16px 18px; background: var(--fill); border-radius: 12px;
+               display: flex; flex-direction: column; gap: 12px; }
+  .vb-title { font-size: 12px; color: var(--text-2); line-height: 1.65; }
+  .voice-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .voice-row input[type="text"] {
+    flex: 1; min-width: 130px;
+    background: var(--card-solid); border: 1px solid var(--hairline); border-radius: 10px;
+    color: var(--text); font-size: 13.5px; font-family: inherit;
+    padding: 9px 12px; outline: none; transition: border-color .2s, box-shadow .2s;
   }
-  button.ghost:hover { background: #262a3a; }
-  button.danger { border-color: #7a3d3d; color: #f8a0a0; }
-  .row {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    margin-top: 20px;
+  .voice-row input[type="text"]:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0, 122, 255, .12); }
+  .voice-row input[type="file"] {
+    font-size: 12px; color: var(--text-2); max-width: 240px;
+    background: var(--card-solid); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 7px 10px;
   }
-  button {
-    background: #6366f1;
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    padding: 12px 28px;
-    font-size: 15px;
-    cursor: pointer;
-    transition: background .2s, transform .1s;
+
+  /* 主 CTA：系统蓝胶囊 + 声波小图标 */
+  .cta-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .cta {
+    border: 0; background: var(--blue); color: #fff;
+    font-family: var(--sans); font-size: 15px; font-weight: 600; letter-spacing: .01em;
+    height: 46px; padding: 0 30px; border-radius: 9999px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 10px;
+    box-shadow: 0 6px 16px rgba(0, 122, 255, .28);
+    transition: background .2s, transform .15s, box-shadow .2s;
   }
-  button:hover { background: #5254cc; }
-  button:active { transform: scale(.97); }
-  button:disabled { background: #44465a; cursor: not-allowed; }
-  .audio-wrap {
-    margin-top: 24px;
-    display: none;
+  .cta:hover:not(:disabled) { background: var(--blue-hover); }
+  .cta:active:not(:disabled) { transform: scale(.97); }
+  .cta:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+  .wave { display: inline-flex; align-items: center; gap: 2.5px; height: 15px; }
+  .wave i { width: 2.5px; border-radius: 2px; background: #fff; }
+  .wave i:nth-child(1) { height: 6px; }
+  .wave i:nth-child(2) { height: 11px; }
+  .wave i:nth-child(3) { height: 15px; }
+  .wave i:nth-child(4) { height: 9px; }
+  .hint { flex: 1; min-width: 220px; font-size: 12px; color: var(--text-3); line-height: 1.7; }
+
+  /* ── 状态条：白色小胶囊，圆点跟随状态色 ───────────────────────────── */
+  .statusbar {
+    margin-top: 16px; padding: 12px 18px;
+    display: flex; align-items: center;
+    font-size: 12.5px; color: var(--text-2);
+    animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .14s;
   }
-  .audio-wrap.show { display: block; }
-  audio {
-    width: 100%;
-    height: 40px;
-    border-radius: 8px;
+  .status { font-family: var(--mono); font-variant-numeric: tabular-nums; line-height: 1.6; }
+  .status::before { content: ""; display: inline-block; width: 8px; height: 8px;
+                    border-radius: 50%; background: currentColor; margin-right: 9px; }
+  .status:empty::after { content: "正在连接服务…"; }
+  .status.ok  { color: #248a3d; }
+  .status.err { color: var(--err); }
+
+  /* ── 结果卡：音频播放器（生成后出现，毛玻璃白卡）─────────────────── */
+  .audio-wrap { display: none; margin-top: 16px; padding: 20px 24px; }
+  .audio-wrap.show { display: block; animation: rise .5s cubic-bezier(.25,.1,.25,1) both; }
+  .res-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .res-head .t { font-size: 13.5px; font-weight: 600; }
+  .res-head .n { font-size: 11.5px; color: var(--text-3); margin-left: auto; }
+  audio { width: 100%; height: 44px; display: block; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @media (max-width: 760px) {
+    body { padding: 36px 14px 60px; }
+    .hero h1 { font-size: 27px; }
+    .compose { padding: 20px; }
+    .hint { min-width: 100%; }
   }
-  .hint {
-    font-size: 12px;
-    color: #555;
-    margin-top: 6px;
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
   }
-  .status {
-    font-size: 12px;
-    color: #666;
-    margin-top: 12px;
-    min-height: 18px;
-  }
-  .status.err { color: #f87171; }
-  .status.ok  { color: #4ade80; }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>Qwen3-TTS 语音合成</h1>
-  <p class="subtitle">Qwen3-TTS 12Hz 1.7B · RKNN 加速</p>
+<div class="wrap">
+  <header class="hero">
+    <span class="tag">Qwen3-TTS 12Hz 1.7B · RKNN NPU</span>
+    <h1>语音合成</h1>
+    <p class="lede">输入文本，挑一种音色让它读出来；支持语气指令，也能录几秒人声克隆专属音色——全部在板子上完成。</p>
+  </header>
 
-  <label>输入文本</label>
-  <textarea id="text" placeholder="输入要合成语音的文本，如：你好，欢迎使用语音合成 demo。"></textarea>
-
-  <label style="margin-top:20px">语气指令（可选）</label>
-  <input id="instruct" type="text" placeholder="如：用悲伤低沉、带哭腔的语气说。留空则自然朗读">
-
-  <label>音色（可选）</label>
-  <select id="speaker"></select>
-  <button id="delVoiceBtn" class="ghost danger" style="display:none; margin-top:10px;">删除当前自定义音色</button>
-
-  <div class="voice-box">
-    <div class="vb-title">声音模仿（板上完成）：选一段 5~10 秒干净人声音频，或直接录音，提取成你的音色</div>
-    <div class="voice-row">
-      <input id="voiceAudio" type="file" accept="audio/*">
-      <button id="recBtn" class="ghost">录音</button>
-      <input id="voiceName" type="text" placeholder="音色名，如 myvoice">
-      <button id="extractBtn" class="ghost">提取音色</button>
+  <section class="card compose">
+    <div>
+      <label class="f-label" for="text">输入文本</label>
+      <textarea id="text" class="field" placeholder="输入要合成语音的文本，如：你好，欢迎使用语音合成 demo。"></textarea>
     </div>
-    <div class="vb-title" style="margin-top:10px">已有 .npy 音色文件（tools/extract_spk_embed.py 生成）？直接上传：</div>
-    <div class="voice-row">
-      <input id="voiceFile" type="file" accept=".npy">
-      <button id="uploadBtn" class="ghost">上传 .npy</button>
+
+    <div>
+      <label class="f-label" for="instruct">语气指令（可选）</label>
+      <input id="instruct" class="field" type="text" placeholder="如：用悲伤低沉、带哭腔的语气说。留空则自然朗读">
     </div>
+
+    <div>
+      <label class="f-label" for="speaker">音色（可选）</label>
+      <div class="selwrap">
+        <select id="speaker" class="field sel"></select>
+      </div>
+      <button id="delVoiceBtn" class="ghost danger" style="display:none; margin-top:10px;">删除当前自定义音色</button>
+    </div>
+
+    <div class="voice-box">
+      <div class="vb-title">声音模仿（板上完成）：选一段 5~10 秒干净人声音频，或直接录音，提取成你的音色</div>
+      <div class="voice-row">
+        <input id="voiceAudio" type="file" accept="audio/*">
+        <button id="recBtn" class="ghost">录音</button>
+        <input id="voiceName" type="text" placeholder="音色名，如 myvoice">
+        <button id="extractBtn" class="ghost">提取音色</button>
+      </div>
+      <div class="vb-title" style="margin-top:10px">已有 .npy 音色文件（tools/extract_spk_embed.py 生成）？直接上传：</div>
+      <div class="voice-row">
+        <input id="voiceFile" type="file" accept=".npy">
+        <button id="uploadBtn" class="ghost">上传 .npy</button>
+      </div>
+    </div>
+
+    <div class="cta-row">
+      <button id="btn" class="cta" disabled><span class="wave"><i></i><i></i><i></i><i></i></span>生成语音</button>
+      <div class="hint">打开页面自动加载模型（约 40 秒）；关闭页面后释放 NPU 并自动退出服务，重新运行 start.sh 即可</div>
+    </div>
+  </section>
+
+  <div class="card statusbar">
+    <div class="status" id="status"></div>
   </div>
 
-  <div class="row">
-    <button id="btn" disabled>生成语音</button>
-  </div>
-
-  <div class="hint">打开页面自动加载模型（约 40 秒）；关闭页面后释放 NPU 并自动退出服务，重新运行 start.sh 即可</div>
-
-  <div class="audio-wrap" id="audioWrap">
+  <div class="audio-wrap card" id="audioWrap">
+    <div class="res-head"><span class="t">合成音频</span><span class="n">每次生成覆盖上一条</span></div>
     <audio id="player" controls></audio>
   </div>
-
-  <div class="status" id="status"></div>
 </div>
 
 <script>

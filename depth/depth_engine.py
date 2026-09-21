@@ -13,6 +13,7 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ── 配置 ──────────────────────────────────────────────────────────────
@@ -199,6 +200,27 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/status":
             self._status()
             return
+        # /demo/<name>：金标准图 / 对比稿页面的受限静态路由
+        # 只放行 demo_ 前缀（金标准图对）和 depth_ 前缀（各设计稿页面），扩展名白名单，防任意文件读取
+        if self.path.startswith("/demo/"):
+            # 先剥掉查询串再取文件名，否则 ?nocam=1 会拼进名字里匹配不到白名单
+            name = os.path.basename(urllib.parse.unquote(self.path[len("/demo/"):].split("?")[0]))
+            ctype = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+                     ".html": "text/html; charset=utf-8"}.get(os.path.splitext(name)[1].lower())
+            full = os.path.join(os.path.dirname(__file__), name)
+            if ctype and (name.startswith("demo_") or name.startswith("depth_")) \
+                    and os.path.exists(full):
+                with open(full, "rb") as f:
+                    body = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_json({"error": "not found"}, code=404)
+            return
         if self.path == "/" or self.path == "/index.html":
             path = os.path.join(os.path.dirname(__file__), "depth.html")
             if os.path.exists(path):
@@ -309,6 +331,8 @@ if __name__ == "__main__":
 
     def _open_browser():
         time.sleep(2)
+        if os.environ.get("DEPTH_OPEN_BROWSER") != "1":
+            return  # 默认不开（后台维护/测试时避免乱弹窗口，页面还会自动开摄像头）
         try:
             env = dict(os.environ)
             env.setdefault("DISPLAY", ":0")

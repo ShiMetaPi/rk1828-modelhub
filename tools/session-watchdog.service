@@ -1,0 +1,12 @@
+[Unit]
+Description=Xorg crash autologin watchdog (greeter -> restart lightdm)
+After=lightdm.service
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /root/session_watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

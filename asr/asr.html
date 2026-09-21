@@ -5,107 +5,204 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>语音字幕 · Qwen3-ASR</title>
 <style>
+  /* 蓝白 Apple 风设计体系（与 depth_apple.html 定稿一致）：
+     蓝白配色、毛玻璃卡片、系统蓝 #007AFF、分段控制器、大圆角软阴影、居中轻标题 */
+  :root {
+    --blue: #007aff;          /* Apple 系统蓝 */
+    --blue-hover: #0066cc;
+    --blue-tint: #e8f2ff;
+    --text: #1d1d1f;          /* Apple 近黑 */
+    --text-2: #6e6e73;        /* Apple 次级灰 */
+    --text-3: #8e8e93;
+    --hairline: rgba(0, 0, 0, .08);
+    --card: rgba(255, 255, 255, .78);   /* ≥.78：软渲染毛玻璃失效时仍是干净白卡 */
+    --fill: #f2f2f7;          /* systemGray6 */
+    --shadow: 0 10px 30px rgba(15, 70, 150, .10);
+    --shadow-sm: 0 2px 10px rgba(15, 70, 150, .07);
+    --ok: #34c759; --warn: #ff9500; --err: #ff3b30;
+    --sans: -apple-system, "SF Pro Display", "Helvetica Neue", "Noto Sans CJK SC",
+            "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: #0f1117;
-    color: #e0e0e0;
+    font-family: var(--sans);
+    /* 蓝白渐变画布：顶部淡蓝晕染渐入纯白 */
+    background:
+      radial-gradient(1100px 500px at 50% -8%, rgba(120, 175, 255, .28), transparent 70%),
+      linear-gradient(180deg, #e3effc 0%, #f0f6fe 32%, #fbfdff 66%, #ffffff 100%);
+    background-attachment: fixed;
+    color: var(--text);
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    padding: 36px 16px;
+    padding: 56px 20px 80px;
   }
-  .wrap { width: min(880px, 96vw); }
-  h1 { font-size: 22px; font-weight: 600; color: #fff; }
-  .subtitle { font-size: 13px; color: #888; margin: 6px 0 26px; }
-  .sources { display: flex; gap: 14px; flex-wrap: wrap; }
-  .src-card {
-    background: #1a1d27;
-    border-radius: 14px;
-    padding: 22px;
-    flex: 1 1 300px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+  ::selection { background: rgba(0, 122, 255, .18); }
+  :focus-visible { outline: 3px solid rgba(0, 122, 255, .45); outline-offset: 2px; border-radius: 6px; }
+  .wrap { width: min(920px, 100%); }
+
+  /* ── 居中轻刊头 ───────────────────────────────────────────────────── */
+  .hero { text-align: center; margin-bottom: 30px;
+          animation: rise .55s cubic-bezier(.25,.1,.25,1) both; }
+  .tag { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+         color: #0a63d2; background: var(--blue-tint);
+         padding: 5px 13px; border-radius: 9999px; margin-bottom: 14px; }
+  .hero h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.1;
+             color: var(--blue); }
+  .hero .lede { margin-top: 10px; font-size: 14.5px; color: var(--text-2); line-height: 1.6; }
+
+  /* ── 毛玻璃卡片基座 ───────────────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(20px) saturate(1.35);
+    -webkit-backdrop-filter: blur(20px) saturate(1.35);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
   }
-  .src-title { font-size: 14px; color: #c3c6dd; font-weight: 600; }
-  .src-hint { font-size: 12px; color: #777; line-height: 1.7; }
-  .rec-row { display: flex; align-items: center; gap: 16px; }
+
+  /* ── 输入卡：iOS 分段控制器切「录音 / 上传」─────────────────────── */
+  .source { padding: 22px; display: flex; flex-direction: column; gap: 18px;
+            align-items: center;
+            animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .07s; }
+  .seg { display: inline-flex; background: #e6edf6; border-radius: 10px; padding: 3px; }
+  .seg button {
+    border: 0; background: transparent; cursor: pointer;
+    padding: 7px 30px; border-radius: 8px;
+    font-family: var(--sans); font-size: 13.5px; font-weight: 500; color: var(--text-2);
+    transition: color .2s, background .2s, box-shadow .2s;
+  }
+  .seg button.on {
+    background: #fff; color: var(--text); font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
+  }
+  .pane { width: 100%; display: flex; flex-direction: column; gap: 14px; }
+  .pane[hidden] { display: none; }
+  .src-hint { font-size: 12.5px; color: var(--text-3); line-height: 1.7; text-align: center; }
+
+  /* 录音钮：白圆底 + 系统红圆点，录音时圆点变方块 + 红色呼吸圈 */
+  .rec-row { display: flex; align-items: center; gap: 20px; justify-content: center; }
   .rec-btn {
     width: 64px; height: 64px; border-radius: 50%;
-    border: 2px solid #4a4d66; background: #20232f;
-    cursor: pointer; transition: all .2s; flex-shrink: 0;
+    border: 1.5px solid var(--hairline); background: #fff;
+    cursor: pointer; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .2s, box-shadow .2s, transform .15s;
   }
-  .rec-btn .dot { width: 22px; height: 22px; border-radius: 50%; background: #e05555; transition: all .2s; }
-  .rec-btn:hover { border-color: #6a4d4d; }
-  .rec-btn.recording { border-color: #e05555; animation: pulse 1.2s ease-in-out infinite; }
-  .rec-btn.recording .dot { border-radius: 4px; }   /* 圆点变方块 = 停止 */
-  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(224,85,85,.35); } 50% { box-shadow: 0 0 0 12px rgba(224,85,85,0); } }
-  .rec-time { font-size: 26px; font-variant-numeric: tabular-nums; color: #e0e0e0; }
-  .rec-time.on { color: #e05555; }
-  canvas#wave { width: 100%; height: 52px; background: #14161e; border-radius: 8px; display: block; }
-  .drop {
-    border: 1.5px dashed #3a3d52; border-radius: 10px;
-    padding: 26px 16px; text-align: center; font-size: 13px; color: #8a8da5;
-    cursor: pointer; transition: border-color .2s, background .2s;
-  }
-  .drop:hover, .drop.over { border-color: #6366f1; background: #20232f; }
-  .drop input { display: none; }
-  .file-info { font-size: 13px; color: #9a9db5; min-height: 18px; }
+  .rec-btn .dot { width: 22px; height: 22px; border-radius: 50%; background: var(--err);
+                  transition: border-radius .2s; }
+  .rec-btn:hover { border-color: rgba(255, 59, 48, .35); }
+  .rec-btn:active { transform: scale(.96); }
+  .rec-btn.recording { border-color: rgba(255, 59, 48, .45); animation: pulse 1.2s ease-in-out infinite; }
+  .rec-btn.recording .dot { border-radius: 5px; }   /* 圆点变方块 = 停止 */
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, .28); } 50% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); } }
+  .rec-time { font-family: var(--mono); font-variant-numeric: tabular-nums;
+              font-size: 26px; color: var(--text); }
+  .rec-time.on { color: var(--err); }
 
+  /* 波形画布：JS 每帧深蓝底重画，作为卡内深色媒体内嵌条 */
+  canvas#wave {
+    width: 100%; height: 52px;
+    background: #0b1a2e;
+    border-radius: 12px;
+    display: block;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .drop {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; min-height: 150px;
+    border: 1.5px dashed rgba(0, 0, 0, .16); border-radius: 12px;
+    font-size: 13px; color: var(--text-2); cursor: pointer; text-align: center;
+    transition: border-color .2s, background .2s, color .2s;
+  }
+  .drop:hover, .drop.over { border-color: var(--blue); background: rgba(0, 122, 255, .05); color: #0a63d2; }
+  .drop input { display: none; }
+  .file-info { font-size: 12.5px; color: var(--text-2); min-height: 18px;
+               font-variant-numeric: tabular-nums; text-align: center; }
+
+  /* ── 转写舞台卡 ───────────────────────────────────────────────────── */
   .stage {
-    margin-top: 14px;
-    background: #14161e;
-    border-radius: 14px;
-    overflow: hidden;
+    margin-top: 16px; overflow: hidden;
+    animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .14s;
   }
   .stage-bar {
-    display: flex; align-items: center; gap: 10px;
-    padding: 12px 20px; border-bottom: 1px solid #232634;
-    font-size: 12px; color: #8a8da5;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 18px; border-bottom: 1px solid var(--hairline);
+    font-size: 12.5px; color: var(--text-2);
+    font-variant-numeric: tabular-nums;
   }
   .stage-bar .spacer { flex: 1; }
-  .chip { background: #20232f; border-radius: 6px; padding: 3px 9px; font-variant-numeric: tabular-nums; }
+  .chip { background: var(--fill); border-radius: 9999px; padding: 3px 11px;
+          font-size: 11.5px; font-family: var(--mono); }
   .stage-bar button {
-    background: transparent; border: 1px solid #4a4d66; color: #c3c6dd;
-    border-radius: 7px; padding: 5px 13px; font-size: 12px; cursor: pointer;
+    background: #fff; border: 1px solid var(--hairline); color: var(--text-2);
+    border-radius: 9999px; padding: 5px 14px; font-size: 12px; cursor: pointer;
+    font-family: var(--sans);
+    transition: color .2s, border-color .2s, background .2s;
   }
-  .stage-bar button:hover { background: #262a3a; }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
-  .status-dot.busy { background: #e0a955; animation: blink 1s ease-in-out infinite; }
-  .status-dot.err  { background: #f87171; }
-  @keyframes blink { 50% { opacity: .3; } }
-  .stage-body { padding: 28px 32px; min-height: 220px; }
-  .empty { color: #555; font-size: 14px; text-align: center; padding-top: 70px; line-height: 2; }
-  #committed { font-size: 21px; line-height: 1.9; color: #f2f2ea; word-break: break-word; }
+  .stage-bar button:hover { color: var(--blue); border-color: rgba(0, 122, 255, .35); background: var(--blue-tint); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+  .status-dot.busy { background: var(--warn); animation: blink 1.1s ease-in-out infinite; }
+  .status-dot.err  { background: var(--err); }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  .stage-body { padding: 26px 30px; min-height: 220px; }
+  /* 空态邀请（JS 控制显隐） */
+  .empty {
+    border: 1.5px dashed rgba(0, 0, 0, .12); border-radius: 18px;
+    color: var(--text-3); font-size: 13px; text-align: center;
+    padding: 46px 20px; line-height: 1.8;
+  }
+  #committed { font-size: 21px; line-height: 1.9; color: var(--text); word-break: break-word; }
   #committed p { animation: fadein .5s ease; }
   @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
-  #unfix { font-size: 19px; color: #7c7f96; font-style: italic; line-height: 1.8; min-height: 30px; word-break: break-word; }
-  #unfix::after { content: "▍"; color: #7c7f96; animation: blink 1s infinite; }
-  .status-line { font-size: 12px; margin-top: 18px; min-height: 16px; }
-  .status-line.err { color: #f87171; }
-  .status-line.ok  { color: #4ade80; }
+  #unfix { font-size: 19px; color: var(--text-3); font-style: italic; line-height: 1.8;
+           min-height: 30px; word-break: break-word; }
+  #unfix::after { content: "▍"; color: var(--text-3); animation: blink 1s infinite; }
+  .status-line { font-size: 12px; margin-top: 18px; min-height: 16px;
+                 font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text-2); }
+  .status-line.err { color: var(--err); }
+  .status-line.ok  { color: #248a3d; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @media (max-width: 760px) {
+    body { padding: 36px 14px 60px; }
+    .hero h1 { font-size: 27px; }
+    .seg button { padding: 7px 18px; }
+    .stage-body { padding: 22px 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>语音字幕</h1>
-  <p class="subtitle">Qwen3-ASR 0.6B · RKNN 加速 · 边转边出字：黑字已确认，灰字还在改</p>
+  <header class="hero">
+    <span class="tag">Qwen3-ASR 0.6B · RKNN NPU</span>
+    <h1>语音字幕</h1>
+    <p class="lede">录音或上传音频，边转边出字幕——黑字已确认，灰字还在改。</p>
+  </header>
 
-  <div class="sources">
-    <div class="src-card">
-      <div class="src-title">麦克风录音</div>
+  <section class="card source">
+    <div class="seg" role="tablist">
+      <button id="segRec" class="on" type="button">麦克风录音</button>
+      <button id="segUp" type="button">上传音频</button>
+    </div>
+
+    <div class="pane" id="paneRec">
       <div class="rec-row">
         <div class="rec-btn" id="recBtn" title="开始录音"><div class="dot"></div></div>
         <div class="rec-time" id="recTime">00:00</div>
       </div>
       <canvas id="wave"></canvas>
-      <div class="src-hint">点圆点开始，再点停止后生成字幕。板上浏览器可用；PC 裸 IP 访问时麦克风被浏览器禁用，请用右侧上传。</div>
+      <div class="src-hint">点圆点开始，再点一下停止后生成字幕。板上浏览器可用；PC 裸 IP 访问时麦克风被浏览器禁用，请切到「上传音频」。</div>
     </div>
 
-    <div class="src-card">
-      <div class="src-title">上传音频</div>
+    <div class="pane" id="paneUp" hidden>
       <label class="drop" id="drop">
         点这里选音频文件，或把文件拖进来
         <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac">
@@ -113,9 +210,9 @@
       <div class="file-info" id="fileInfo">支持 wav / mp3 / flac / ogg / m4a（浏览器里解码）</div>
       <div class="src-hint">上传后自动开始转写。整段音频在浏览器解码成 16kHz 单声道再交给 NPU。</div>
     </div>
-  </div>
+  </section>
 
-  <div class="stage">
+  <section class="card stage">
     <div class="stage-bar">
       <div class="status-dot" id="dot"></div>
       <span id="stageTxt">就绪</span>
@@ -131,7 +228,7 @@
       <div id="unfix" style="display:none"></div>
       <div class="status-line" id="status"></div>
     </div>
-  </div>
+  </section>
 </div>
 
 <script>
@@ -164,6 +261,21 @@ function setStage(txt, mode) {   // mode: "" | busy | err
   stageTxt.textContent = txt;
   dot.className = "status-dot" + (mode === "busy" ? " busy" : mode === "err" ? " err" : "");
 }
+
+// ── 分段控制器：录音 / 上传 ──────────────────────────────────────────
+const segRec  = document.getElementById("segRec");
+const segUp   = document.getElementById("segUp");
+const paneRec = document.getElementById("paneRec");
+const paneUp  = document.getElementById("paneUp");
+function pick(which) {
+  const rec = which === "rec";
+  segRec.classList.toggle("on", rec);
+  segUp.classList.toggle("on", !rec);
+  paneRec.hidden = !rec;
+  paneUp.hidden = rec;
+}
+segRec.addEventListener("click", () => pick("rec"));
+segUp.addEventListener("click", () => pick("up"));
 
 // ── 音频编码：任意 blob → AudioBuffer → 16kHz mono → PCM16 WAV ──────
 async function blobToWav16k(blob) {

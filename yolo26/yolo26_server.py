@@ -416,6 +416,8 @@ if __name__ == "__main__":
 
     def _open_browser():
         time.sleep(2)
+        if os.environ.get("YOLO26_OPEN_BROWSER") != "1":
+            return  # 默认不开（后台维护/测试时避免乱弹窗口，页面还会自动开摄像头）
         try:
             env = dict(os.environ)
             env.setdefault("DISPLAY", ":0")

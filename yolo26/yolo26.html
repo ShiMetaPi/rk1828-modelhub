@@ -5,46 +5,122 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>YOLO26 · 实时识别</title>
 <style>
+  /* 蓝白 Apple 风设计体系（与 depth_apple.html 定稿一致）：
+     蓝白配色、毛玻璃卡片、系统蓝 #007AFF、iOS 分段控制器、大圆角软阴影、居中轻标题；
+     舞台（视频 + canvas 叠加区）作为媒体内容保留深色底 */
   :root {
-    --bg: #101216; --panel: #171b22; --panel2: #1d222b;
-    --text: #e8eaf0; --muted: #8b93a7; --line: #262c37;
-    --accent: #5b9cff; --ok: #57c7a4; --err: #e05f5f;
+    --blue: #007aff;          /* Apple 系统蓝 */
+    --blue-hover: #0066cc;
+    --blue-tint: #e8f2ff;
+    --text: #1d1d1f;          /* Apple 近黑 */
+    --text-2: #6e6e73;        /* Apple 次级灰 */
+    --text-3: #8e8e93;
+    --hairline: rgba(0, 0, 0, .08);
+    --card: rgba(255, 255, 255, .78);   /* ≥.78：软渲染毛玻璃失效时仍是干净白卡 */
+    --card-solid: rgba(255, 255, 255, .94);
+    --fill: #f2f2f7;          /* systemGray6 */
+    --shadow: 0 10px 30px rgba(15, 70, 150, .10);
+    --shadow-sm: 0 2px 10px rgba(15, 70, 150, .07);
+    --ok: #34c759; --warn: #ff9500; --err: #ff3b30;
+    --sans: -apple-system, "SF Pro Display", "Helvetica Neue", "Noto Sans CJK SC",
+            "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: var(--bg); color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans CJK SC", sans-serif;
-    min-height: 100vh; display: flex; justify-content: center;
+    font-family: var(--sans);
+    /* 蓝白渐变画布：顶部淡蓝晕染渐入纯白 */
+    background:
+      radial-gradient(1100px 500px at 50% -8%, rgba(120, 175, 255, .28), transparent 70%),
+      linear-gradient(180deg, #e3effc 0%, #f0f6fe 32%, #fbfdff 66%, #ffffff 100%);
+    background-attachment: fixed;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 56px 20px 80px;
   }
-  .wrap { width: min(960px, 100%); padding: 18px 16px 40px; }
+  ::selection { background: rgba(0, 122, 255, .18); }
+  :focus-visible { outline: 3px solid rgba(0, 122, 255, .45); outline-offset: 2px; border-radius: 6px; }
+  .wrap { width: min(920px, 100%); }
 
-  header { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; }
-  h1 { font-size: 21px; font-weight: 700; letter-spacing: .3px; }
-  h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  /* ── 居中轻刊头 ───────────────────────────────────────────────────── */
+  .hero { text-align: center; margin-bottom: 30px;
+          animation: rise .55s cubic-bezier(.25,.1,.25,1) both; }
+  .tag { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 600;
+         letter-spacing: .04em; color: #0a63d2; background: var(--blue-tint);
+         padding: 5px 13px; border-radius: 9999px; margin-bottom: 14px; }
+  .tag span + span::before { content: "·"; margin: 0 7px; opacity: .5; }
+  .hero h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.1;
+             color: var(--blue); }
+  .hero .lede { margin-top: 10px; font-size: 14.5px; color: var(--text-2); line-height: 1.6; }
 
-  .tabs { display: inline-flex; background: var(--panel); border: 1px solid var(--line);
-          border-radius: 9px; padding: 3px; gap: 3px; }
-  .tab { border: 0; background: transparent; color: var(--muted); font-size: 13px;
-         padding: 6px 16px; border-radius: 7px; cursor: pointer; }
-  .tab.on { background: var(--accent); color: #fff; font-weight: 600; }
+  /* 引擎状态小胶囊（JS 只改 #led 的类和 #ledText 的文字） */
+  .live { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px;
+          padding: 6px 14px; background: var(--card); border: 1px solid var(--hairline);
+          border-radius: 9999px; font-size: 12px; color: var(--text-2);
+          box-shadow: var(--shadow-sm); }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: #c7c7cc; flex-shrink: 0; }
+  .led.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(52, 199, 89, .16);
+            animation: led-pulse 2.4s ease-in-out infinite; }
+  .led.err { background: var(--err); box-shadow: 0 0 0 3px rgba(255, 59, 48, .16); }
+  @keyframes led-pulse { 50% { opacity: .55; } }
+
+  /* ── 毛玻璃卡片基座 ───────────────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(20px) saturate(1.35);
+    -webkit-backdrop-filter: blur(20px) saturate(1.35);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+  }
+
+  /* ── 控制卡：iOS 分段控制器切任务 + 操作 + 遥测读数 ──────────────── */
+  .panel { padding: 20px 22px; display: flex; flex-direction: column; align-items: center;
+           gap: 16px;
+           animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .07s; }
+  .tabs { display: inline-flex; background: #e6edf6; border-radius: 10px; padding: 3px; gap: 2px; }
+  .tab { border: 0; background: transparent; cursor: pointer;
+         padding: 7px 26px; border-radius: 8px;
+         font-family: var(--sans); font-size: 13.5px; font-weight: 500; color: var(--text-2);
+         transition: color .2s, background .2s, box-shadow .2s; }
+  .tab:hover:not(.on):not(:disabled) { color: var(--text); }
+  .tab.on { background: #fff; color: var(--text); font-weight: 600;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
   .tab:disabled { cursor: not-allowed; opacity: .45; }
 
-  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-  .btn { border: 1px solid var(--line); background: var(--panel); color: var(--text);
-         font-size: 14px; padding: 8px 18px; border-radius: 9px; cursor: pointer; }
-  .btn:hover:not(:disabled) { background: var(--panel2); }
-  .btn:disabled { opacity: .4; cursor: not-allowed; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  .btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
+  .row { width: 100%; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .ops { display: flex; gap: 10px; flex-wrap: wrap; }
+  /* 次级按钮：灰底胶囊 */
+  .btn { border: 0; background: var(--fill); color: var(--text);
+         font-family: var(--sans); font-size: 13.5px; font-weight: 500;
+         padding: 10px 20px; border-radius: 9999px; cursor: pointer;
+         display: inline-flex; align-items: center;
+         transition: background .2s, transform .15s; }
+  .btn:hover:not(:disabled) { background: #e8e8ed; }
+  .btn:active:not(:disabled) { transform: scale(.97); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  /* 主 CTA：系统蓝胶囊 */
+  .btn.primary { background: var(--blue); color: #fff; font-weight: 600;
+                 box-shadow: 0 6px 16px rgba(0, 122, 255, .28); }
+  .btn.primary:hover:not(:disabled) { background: var(--blue-hover); }
+  .btn.primary:disabled { opacity: .35; box-shadow: none; }
 
-  .chips { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-  .chip { background: var(--panel); border: 1px solid var(--line); color: var(--muted);
-          font-size: 12px; padding: 5px 11px; border-radius: 999px; white-space: nowrap; }
-  .chip b { color: var(--text); font-weight: 600; }
+  /* 遥测读数：--fill 底胶囊，数字等宽对齐（JS 向 chip 内写 <b>数值</b>） */
+  .chips { display: flex; margin-left: auto; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip { background: var(--fill); border-radius: 9999px; padding: 5px 12px;
+          font-size: 11.5px; color: var(--text-2); white-space: nowrap;
+          font-variant-numeric: tabular-nums; }
+  .chip b { font-family: var(--mono); font-weight: 500; font-size: 13px;
+            color: var(--text); margin-left: 5px; }
 
-  .stage { position: relative; background: var(--panel); border: 1px solid var(--line);
-           border-radius: 12px; overflow: hidden; min-height: 200px;
-           display: flex; align-items: center; justify-content: center; }
+  /* ── 舞台：媒体内容保留深色底（与 depth 的 #video 同款）──────────── */
+  .stage { position: relative; margin-top: 16px; background: #0b1a2e;
+           border-radius: 14px; overflow: hidden; min-height: 220px;
+           display: flex; align-items: center; justify-content: center;
+           box-shadow: var(--shadow-sm);
+           animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .14s; }
   .stage video, .stage img { display: none; width: 100%; height: auto; }
   #disp { display: none; width: 100%; height: auto; background: #000; }
   .stage.cam #disp { display: block; }
@@ -52,44 +128,72 @@
   #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
   .stage.cam #ov, .stage.photo #ov { display: block; }
 
-  .hint { color: var(--muted); font-size: 14px; padding: 60px 20px; text-align: center; }
-  .hint.hidden { display: none; }
-  #loading { position: absolute; inset: 0; display: flex; align-items: center;
-             justify-content: center; background: rgba(16,18,22,.72); font-size: 14px;
-             color: var(--text); }
-  #loading.hidden { display: none; }
+  .hint { color: #a8bbd4; font-size: 14px; padding: 64px 20px; text-align: center; }
+  .hint.hidden, #loading.hidden { display: none; }
+  #loading { position: absolute; inset: 0; display: flex; flex-direction: column;
+             gap: 14px; align-items: center; justify-content: center;
+             background: rgba(11, 26, 46, .74); font-size: 13.5px; color: #e4eefb; }
+  /* 加载扫描条：状态反馈，不是装饰 */
+  #loading::after { content: ""; width: 132px; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, #5aa9ff 50%, transparent);
+    background-size: 60px 100%; background-repeat: no-repeat;
+    animation: scan 1.15s ease-in-out infinite alternate; }
+  @keyframes scan { from { background-position: -30px 0; } to { background-position: 102px 0; } }
 
-  .foot { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .foot { margin-top: 16px; text-align: center; color: var(--text-3); font-size: 12px;
+          line-height: 1.8; font-variant-numeric: tabular-nums;
+          animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .14s; }
 
+  /* iOS 风深色提示胶囊 */
   #toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
-           background: #2a1113; color: #ffb4b4; border: 1px solid #5c2a2e;
-           font-size: 13px; padding: 9px 16px; border-radius: 9px;
+           background: rgba(28, 28, 30, .92); color: #fff;
+           font-size: 13px; padding: 10px 18px; border-radius: 9999px;
+           box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
            opacity: 0; pointer-events: none; transition: opacity .25s; max-width: 90vw; }
   #toast.show { opacity: 1; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @media (max-width: 760px) {
+    body { padding: 36px 14px 60px; }
+    .hero h1 { font-size: 27px; }
+    .tab { padding: 7px 16px; }
+    .chips { margin-left: 0; width: 100%; justify-content: space-between; }
+    .chip { padding: 5px 9px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>YOLO26 · 实时识别<small>检测 · 分割 · 姿态</small></h1>
+  <header class="hero">
+    <span class="tag"><span>YOLO26n</span><span>W8A8 INT8</span><span>RKNN3 NPU</span></span>
+    <h1>实时识别</h1>
+    <p class="lede">摄像头实时流约 14 FPS——检测 / 分割 / 姿态一键切换，框、实例彩罩和骨架都在浏览器端绘制。</p>
+    <div class="live"><span id="led" class="led"></span><span id="ledText">连接中</span></div>
+  </header>
+
+  <section class="card panel">
     <nav class="tabs">
       <button class="tab" data-task="det">检测</button>
       <button class="tab on" data-task="seg">分割</button>
       <button class="tab" data-task="pose">姿态</button>
     </nav>
-  </header>
-
-  <div class="bar">
-    <button id="btnStart" class="btn primary">开始摄像头</button>
-    <button id="btnStop" class="btn" disabled>停止</button>
-    <label class="btn">上传图片<input id="file" type="file" accept="image/*" hidden></label>
-    <div class="chips">
-      <span class="chip" id="chipFps">FPS <b>—</b></span>
-      <span class="chip" id="chipMs">耗时 <b>—</b></span>
-      <span class="chip" id="chipBr">页面 <b>—</b></span>
-      <span class="chip" id="chipN">目标 <b>—</b></span>
+    <div class="row">
+      <div class="ops">
+        <button id="btnStart" class="btn primary">开始摄像头</button>
+        <button id="btnStop" class="btn" disabled>停止</button>
+        <label class="btn">上传图片<input id="file" type="file" accept="image/*" hidden></label>
+      </div>
+      <div class="chips">
+        <span class="chip" id="chipFps">FPS <b>—</b></span>
+        <span class="chip" id="chipMs">耗时 <b>—</b></span>
+        <span class="chip" id="chipBr">页面 <b>—</b></span>
+        <span class="chip" id="chipN">目标 <b>—</b></span>
+      </div>
     </div>
-  </div>
+  </section>
 
   <div id="stage" class="stage">
     <video id="cam" playsinline muted autoplay></video>
@@ -506,6 +610,21 @@ window.addEventListener("pagehide", () => {
 fetch("/api/status").catch(() => {});
 // 心跳（5s）：页面开着服务就活着；后台标签被限流到 1 次/分钟也远够
 setInterval(() => fetch("/api/beat").catch(() => {}), 5000);
+
+// 铭牌状态灯：跟随引擎状态（纯展示，不影响任何逻辑）
+(function pollLed() {
+  const led = $("led"), txt = $("ledText");
+  const upd = async () => {
+    try {
+      const r = await (await fetch("/api/status")).json();
+      led.className = "led" + (r.state === "ready" ? " on" : r.state === "error" ? " err" : "");
+      txt.textContent = r.state === "ready" ? "模型就绪" :
+                        r.state === "error" ? "加载失败" : "模型加载中";
+    } catch (e) { led.className = "led"; txt.textContent = "服务未起"; }
+  };
+  upd();
+  setInterval(upd, 3000);
+})();
 </script>
 </body>
 </html>

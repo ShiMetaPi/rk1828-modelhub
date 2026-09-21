@@ -6,7 +6,7 @@ set -e
 
 cd "$(dirname "$0")"
 DEMO_DIR="$(pwd)"
-MODEL_DIR="${MODEL_DIR:-/root/Qwen3_TTS_deploy}"
+MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen3-tts}"
 TTS_BIN="${DEMO_DIR}/tts_engine"
 
 # ── NPU 可用性检查 ──────────────────────────────────────────────────

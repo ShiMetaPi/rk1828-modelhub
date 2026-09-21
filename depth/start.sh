@@ -64,6 +64,7 @@ check_npu
 export DEPTH_MODEL_DIR="$MODEL_DIR"
 export DEPTH_BIN="$DEPTH_BIN"
 export DEPTH_SOCK="/tmp/depth_engine.sock"
+export DEPTH_OPEN_BROWSER=1   # 日常使用自动开浏览器；后台直接跑 depth_engine.py 则不弹
 
 echo "[depth] 启动 Web 服务 :8091"
 python3 depth_engine.py

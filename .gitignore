@@ -39,3 +39,14 @@ spk_embed/
 # 语音样本 / 合成产物（含个人声音数据，不进公开仓库）
 /*.wav
 /*.mp3
+tts/voices/
+tts/gold/
+asr/*.wav
+
+# 本地模型镜像（PC 端给离线板子中转用，10GB，不进 git）
+release_mirror/
+
+# 板上实测留下的测试图 / 摄像头抓拍（含个人环境画面）
+yolo26/model/
+depth/demo_*
+depth/frame_*

@@ -58,6 +58,7 @@ check_npu
 export YOLO_MODEL_DIR="$MODEL_DIR"
 export YOLO_BIN="$YOLO_BIN"
 export YOLO_SOCK="/tmp/yolo26_engine.sock"
+export YOLO26_OPEN_BROWSER=1   # 日常使用自动开浏览器；后台直接跑 yolo26_server.py 则不弹
 
 echo "[yolo26] 启动 Web 服务 :8092"
 python3 yolo26_server.py

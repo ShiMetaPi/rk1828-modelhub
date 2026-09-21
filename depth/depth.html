@@ -5,144 +5,233 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>深度相机 · Depth-Anything-V3</title>
 <style>
+  /* 蓝白渐变 · Apple 风对比稿：蓝白配色、毛玻璃卡片、系统蓝 #007AFF、
+     分段控制器、大圆角软阴影、居中轻标题——优雅直观 */
+  :root {
+    --blue: #007aff;          /* Apple 系统蓝 */
+    --blue-hover: #0066cc;
+    --blue-tint: #e8f2ff;
+    --text: #1d1d1f;          /* Apple 近黑 */
+    --text-2: #6e6e73;        /* Apple 次级灰 */
+    --text-3: #8e8e93;
+    --hairline: rgba(0, 0, 0, .08);
+    --card: rgba(255, 255, 255, .78);
+    --card-solid: rgba(255, 255, 255, .94);
+    --fill: #f2f2f7;          /* systemGray6 */
+    --shadow: 0 10px 30px rgba(15, 70, 150, .10);
+    --shadow-sm: 0 2px 10px rgba(15, 70, 150, .07);
+    --ok: #34c759; --warn: #ff9500; --err: #ff3b30;
+    --sans: -apple-system, "SF Pro Display", "Helvetica Neue", "Noto Sans CJK SC",
+            "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: #0f1117;
-    color: #e0e0e0;
+    font-family: var(--sans);
+    /* 蓝白渐变画布：顶部淡蓝晕染渐入纯白 */
+    background:
+      radial-gradient(1100px 500px at 50% -8%, rgba(120, 175, 255, .28), transparent 70%),
+      linear-gradient(180deg, #e3effc 0%, #f0f6fe 32%, #fbfdff 66%, #ffffff 100%);
+    background-attachment: fixed;
+    color: var(--text);
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    padding: 36px 16px;
+    padding: 56px 20px 80px;
   }
-  .wrap { width: min(960px, 96vw); }
-  h1 { font-size: 22px; font-weight: 600; color: #fff; }
-  .subtitle { font-size: 13px; color: #888; margin: 6px 0 26px; }
-  .sources { display: flex; gap: 14px; flex-wrap: wrap; }
-  .src-card {
-    background: #1a1d27;
-    border-radius: 14px;
-    padding: 22px;
-    flex: 1 1 340px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+  ::selection { background: rgba(0, 122, 255, .18); }
+  :focus-visible { outline: 3px solid rgba(0, 122, 255, .45); outline-offset: 2px; border-radius: 6px; }
+  .wrap { width: min(920px, 100%); }
+
+  /* ── 居中轻刊头 ───────────────────────────────────────────────────── */
+  .hero { text-align: center; margin-bottom: 30px;
+          animation: rise .55s cubic-bezier(.25,.1,.25,1) both; }
+  .tag { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+         color: #0a63d2; background: var(--blue-tint);
+         padding: 5px 13px; border-radius: 9999px; margin-bottom: 14px; }
+  .hero h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.1;
+             color: var(--blue); }
+  .hero .lede { margin-top: 10px; font-size: 14.5px; color: var(--text-2); line-height: 1.6; }
+
+  /* ── 毛玻璃卡片基座 ───────────────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(20px) saturate(1.35);
+    -webkit-backdrop-filter: blur(20px) saturate(1.35);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
   }
-  .src-title { font-size: 14px; color: #c3c6dd; font-weight: 600; }
-  .src-hint { font-size: 12px; color: #777; line-height: 1.7; }
+
+  /* ── 输入卡：iOS 分段控制器切「拍摄 / 上传」─────────────────────── */
+  .source { padding: 22px; display: flex; flex-direction: column; gap: 18px;
+            align-items: center;
+            animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .07s; }
+  .seg { display: inline-flex; background: #e6edf6; border-radius: 10px; padding: 3px; }
+  .seg button {
+    border: 0; background: transparent; cursor: pointer;
+    padding: 7px 30px; border-radius: 8px;
+    font-family: var(--sans); font-size: 13.5px; font-weight: 500; color: var(--text-2);
+    transition: color .2s, background .2s, box-shadow .2s;
+  }
+  .seg button.on {
+    background: #fff; color: var(--text); font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
+  }
+  .pane { width: 100%; display: flex; flex-direction: column; gap: 14px; }
+  .pane[hidden] { display: none; }
+  .src-hint { font-size: 12.5px; color: var(--text-3); line-height: 1.7; text-align: center; }
 
   #video {
     width: 100%;
+    max-width: 560px;
     aspect-ratio: 1 / 1;   /* 方形取景 = 模型看到的中心方裁剪，所见即所得 */
     object-fit: cover;
-    background: #14161e;
-    border-radius: 10px;
+    background: #0b1a2e;
+    border-radius: 14px;
     display: block;
+    margin: 0 auto;
+    box-shadow: var(--shadow-sm);
   }
   .no-cam {
     width: 100%;
+    max-width: 560px;
     aspect-ratio: 1 / 1;
-    background: #14161e;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #555;
-    font-size: 13px;
-  }
-  .cam-row { display: flex; align-items: center; gap: 16px; }
-  .shot-btn {
-    width: 64px; height: 64px; border-radius: 50%;
-    border: 2px solid #4a4d66; background: #20232f;
-    cursor: pointer; transition: all .2s; flex-shrink: 0;
+    margin: 0 auto;
+    background: var(--fill);
+    border-radius: 14px;
     display: flex; align-items: center; justify-content: center;
+    color: var(--text-3); font-size: 13px; padding: 24px; text-align: center; line-height: 1.7;
   }
-  .shot-btn .dot { width: 26px; height: 26px; border-radius: 50%; background: #e05555; transition: all .15s; }
-  .shot-btn:hover:not(:disabled) { border-color: #6a4d4d; transform: scale(1.04); }
-  .shot-btn:active:not(:disabled) .dot { transform: scale(.82); }
-  .shot-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .cam-row { display: flex; align-items: center; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  /* CTA：系统蓝胶囊按钮 */
+  .shot-btn {
+    border: 0; background: var(--blue); color: #fff;
+    font-family: var(--sans); font-size: 15px; font-weight: 600; letter-spacing: .01em;
+    height: 46px; padding: 0 30px; border-radius: 9999px; cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 6px 16px rgba(0, 122, 255, .28);
+    transition: background .2s, transform .15s, box-shadow .2s;
+  }
+  .shot-btn .dot { width: 9px; height: 9px; border-radius: 50%; background: #fff; }
+  .shot-btn:hover:not(:disabled) { background: var(--blue-hover); }
+  .shot-btn:active:not(:disabled) { transform: scale(.97); }
+  .shot-btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
 
   .drop {
-    border: 1.5px dashed #3a3d52; border-radius: 10px;
-    padding: 30px 16px; text-align: center; font-size: 13px; color: #8a8da5;
-    cursor: pointer; transition: border-color .2s, background .2s;
+    display: flex; align-items: center; justify-content: center;
+    max-width: 560px; width: 100%; margin: 0 auto;
+    min-height: 220px;
+    border: 1.5px dashed rgba(0, 0, 0, .16); border-radius: 14px;
+    font-size: 13px; color: var(--text-2); cursor: pointer;
+    transition: border-color .2s, background .2s, color .2s;
   }
-  .drop:hover, .drop.over { border-color: #6366f1; background: #20232f; }
+  .drop:hover, .drop.over { border-color: var(--blue); background: rgba(0, 122, 255, .05); color: #0a63d2; }
   .drop input { display: none; }
 
-  .bar {
-    margin-top: 14px;
-    display: flex; align-items: center; gap: 10px;
-    padding: 12px 20px; border-radius: 14px;
-    background: #14161e; font-size: 12px; color: #8a8da5;
+  /* ── 状态条：白色小胶囊 ───────────────────────────────────────────── */
+  .statusbar {
+    margin-top: 16px; padding: 11px 18px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+    animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .14s;
   }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
-  .status-dot.busy { background: #e0a955; animation: blink 1s ease-in-out infinite; }
-  .status-dot.err  { background: #f87171; }
-  @keyframes blink { 50% { opacity: .3; } }
-  .chip { background: #20232f; border-radius: 6px; padding: 3px 9px; font-variant-numeric: tabular-nums; }
-  .bar .spacer { flex: 1; }
-  .msg { font-variant-numeric: tabular-nums; }
-  .msg.err { color: #f87171; }
-  .msg.ok  { color: #4ade80; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+  .status-dot.busy { background: var(--warn); animation: blink 1.1s ease-in-out infinite; }
+  .status-dot.err  { background: var(--err); }
+  @keyframes blink { 50% { opacity: .25; } }
+  .chip { background: var(--fill); border-radius: 9999px; padding: 3px 11px; font-size: 11.5px; }
+  .statusbar .spacer { flex: 1; }
+  .msg { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .msg.err { color: var(--err); }
+  .msg.ok  { color: #248a3d; }
 
-  #results { margin-top: 14px; display: flex; flex-direction: column; gap: 14px; }
-  .shot {
-    background: #1a1d27; border-radius: 14px; padding: 18px 20px;
-    animation: fadein .5s ease;
+  /* ── 空态邀请 ─────────────────────────────────────────────────────── */
+  #results:empty::after {
+    content: "拍一张或传一张图，结果会出现在这里";
+    display: block; text-align: center;
+    margin-top: 16px; padding: 46px 20px;
+    border: 1.5px dashed rgba(0, 0, 0, .12); border-radius: 18px;
+    color: var(--text-3); font-size: 13px;
   }
-  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
-  .shot-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; font-size: 12px; color: #8a8da5; flex-wrap: wrap; }
-  .shot-head .n { font-size: 14px; color: #c3c6dd; font-weight: 600; }
+  #results { margin-top: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .shot { padding: 22px 24px;
+          animation: rise .5s cubic-bezier(.25,.1,.25,1) both; }
+  .shot-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+               font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .shot-head .n { font-size: 14px; color: var(--text); font-weight: 600; }
   .shot-head .spacer { flex: 1; }
-  .pair { display: flex; gap: 10px; }
+  .pair { display: flex; gap: 12px; }
   .pair figure { flex: 1; min-width: 0; }
   .pair img {
-    width: 100%; border-radius: 8px; display: block; cursor: zoom-in;
-    background: #14161e;
+    width: 100%; border-radius: 12px; display: block; cursor: zoom-in;
+    background: #0b1a2e; transition: opacity .2s;
   }
-  .pair figcaption { font-size: 11px; color: #666; text-align: center; margin-top: 6px; }
-  .ov-title { font-size: 11px; color: #666; margin: 14px 0 6px; text-align: center; }
-  .ov-wrap { display: flex; gap: 10px; max-width: 620px; margin: 0 auto; align-items: stretch; }
-  .ov-box { position: relative; flex: 1; min-width: 0; border-radius: 8px; overflow: hidden; }
+  .pair img:hover { opacity: .92; }
+  .pair figcaption { font-size: 11.5px; color: var(--text-3); text-align: center; margin-top: 8px; }
+  .ov-title { font-size: 11.5px; color: var(--text-3); margin: 18px 0 8px; text-align: center; }
+  .ov-wrap { display: flex; gap: 12px; max-width: 620px; margin: 0 auto; align-items: stretch; }
+  .ov-box { position: relative; flex: 1; min-width: 0; border-radius: 12px; overflow: hidden;
+            box-shadow: var(--shadow-sm); }
   .ov-box img { width: 100%; display: block; }
   .ov-box .top { position: absolute; inset: 0; }
-  .cbar { width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #8a8da5; flex-shrink: 0; }
+  .cbar { width: 52px; display: flex; flex-direction: column; align-items: center; gap: 5px;
+          font-size: 11px; color: var(--text-3); flex-shrink: 0; }
   .cbar .lab { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
-  .cbar .grad { flex: 1; width: 14px; border-radius: 4px; border: 1px solid #2a2d3d; }
-  .ov-ctl { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 12px; color: #8a8da5; max-width: 620px; margin-left: auto; margin-right: auto; }
-  .ov-ctl input[type=range] { flex: 1; accent-color: #e05555; }
-  .dl { font-size: 11px; color: #7c7f96; text-decoration: none; border: 1px solid #3a3d52; border-radius: 6px; padding: 2px 8px; }
-  .dl:hover { color: #c3c6dd; border-color: #6a6d86; }
+  .cbar .grad { flex: 1; width: 14px; border-radius: 7px; border: 1px solid var(--hairline); }
+  .ov-ctl { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12.5px;
+            color: var(--text-2); max-width: 620px; margin-left: auto; margin-right: auto; }
+  .ov-ctl input[type=range] { flex: 1; accent-color: var(--blue); }
+  .dl { font-size: 11.5px; color: var(--blue); text-decoration: none;
+        background: var(--blue-tint); border-radius: 9999px; padding: 4px 12px;
+        transition: background .2s; }
+  .dl:hover { background: #d6e9ff; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @media (max-width: 760px) {
+    body { padding: 36px 14px 60px; }
+    .hero h1 { font-size: 27px; }
+    .seg button { padding: 7px 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>深度相机</h1>
-  <p class="subtitle">Depth-Anything-V3 · RKNN 加速 · 拍一张出一对：原图 + 相对深度图（近红远蓝，非绝对米数）</p>
+  <header class="hero">
+    <span class="tag">Depth-Anything-V3 · RKNN NPU</span>
+    <h1>深度相机</h1>
+    <p class="lede">拍一张，同时得到原图和它的相对深度图。近红远蓝，只有远近关系，不标米数。</p>
+  </header>
 
-  <div class="sources">
-    <div class="src-card">
-      <div class="src-title">摄像头拍摄</div>
+  <section class="card source">
+    <div class="seg" role="tablist">
+      <button id="segCam" class="on" type="button">摄像头拍摄</button>
+      <button id="segUp" type="button">上传图片</button>
+    </div>
+
+    <div class="pane" id="paneCam">
       <video id="video" autoplay playsinline muted style="display:none"></video>
       <div class="no-cam" id="noCam">正在打开摄像头…</div>
       <div class="cam-row">
-        <button class="shot-btn" id="shotBtn" title="拍摄" disabled><div class="dot"></div></button>
-        <div class="src-hint">点圆点拍摄取景框内的方形画面，出「原图 vs 深度图」+ 叠加对比。首次拍摄要加载模型（约十几秒），之后每张约 1 秒。</div>
+        <button class="shot-btn" id="shotBtn" title="拍摄" disabled><div class="dot"></div>拍一张</button>
+        <div class="src-hint">方形取景就是模型看到的中心裁剪。首次拍摄要加载模型（约十几秒），之后每张约 1 秒。</div>
       </div>
     </div>
 
-    <div class="src-card">
-      <div class="src-title">上传图片</div>
+    <div class="pane" id="paneUp" hidden>
       <label class="drop" id="drop">
         点这里选图片，或把图片拖进来
         <input type="file" id="file" accept="image/*">
       </label>
-      <div class="src-hint">没有摄像头也能玩：任意 JPG/PNG 上传（自动取中央方形区域），同样出深度图。图片只在板子上处理。</div>
+      <div class="src-hint">没有摄像头也能玩：任意 JPG/PNG 上传（自动取中央方形区域）。图片只在板子上处理。</div>
     </div>
-  </div>
+  </section>
 
-  <div class="bar">
+  <div class="card statusbar">
     <div class="status-dot" id="dot"></div>
     <span id="stateTxt">连接服务中…</span>
     <span class="chip" id="resChip" style="display:none"></span>
@@ -178,6 +267,21 @@ function setState(txt, mode) {  // mode: "" | busy | err
   dot.className = "status-dot" + (mode === "busy" ? " busy" : mode === "err" ? " err" : "");
 }
 
+// ── 分段控制器：拍摄 / 上传 ──────────────────────────────────────────
+const segCam  = document.getElementById("segCam");
+const segUp   = document.getElementById("segUp");
+const paneCam = document.getElementById("paneCam");
+const paneUp  = document.getElementById("paneUp");
+function pick(which) {
+  const cam = which === "cam";
+  segCam.classList.toggle("on", cam);
+  segUp.classList.toggle("on", !cam);
+  paneCam.hidden = !cam;
+  paneUp.hidden = cam;
+}
+segCam.addEventListener("click", () => pick("cam"));
+segUp.addEventListener("click", () => pick("up"));
+
 // ── 摄像头 ──────────────────────────────────────────────────────────
 let camDeviceId = null;   // 试出来的可用设备（记住后刷新也直接用）
 
@@ -193,7 +297,7 @@ async function tryOpenCamera(constraints) {
 
 async function startCamera() {
   if (!navigator.mediaDevices || !window.isSecureContext) {
-    noCam.textContent = "此环境不允许摄像头（需板上浏览器或 localhost），请用右侧上传图片";
+    noCam.textContent = "此环境不允许摄像头（需板上浏览器或 localhost），请切到「上传图片」";
     return;
   }
   const base = { width: { ideal: 1280 }, height: { ideal: 960 } };
@@ -218,9 +322,15 @@ async function startCamera() {
       return;
     } catch (e) { /* 换下一个设备 */ }
   }
-  noCam.textContent = "摄像头打开失败：所有视频设备都起不动（确认 USB 摄像头插好），请用右侧上传图片";
+  noCam.textContent = "摄像头打开失败：所有视频设备都起不动（确认 USB 摄像头插好），请切到「上传图片」";
 }
-startCamera();
+// ?nocam=1：跳过摄像头（测试/截图钩子，也照顾没摄像头的环境）
+const Q = new URLSearchParams(location.search);
+if (Q.get("nocam") === "1") {
+  noCam.textContent = "摄像头已停用（?nocam=1）——切到「上传图片」同样能出深度图";
+} else {
+  startCamera();
+}
 
 // 任意源（video 帧 / 上传文件）→ 中心方裁剪 → 归一化 JPEG
 // 模型输入是固定 280×280 方形，取画面正中的正方形区域：原图和深度图同构图不变形
@@ -288,7 +398,7 @@ function turboGradient(stops) {
 
 function addShot(n, originalUrl, depthUrl, stats) {
   const div = document.createElement("div");
-  div.className = "shot";
+  div.className = "shot card";
   const mrow = [];
   // DA3-BASE 输出相对深度（无米制量纲），不标假米数，只标耗时
   if (stats.ms) mrow.push("耗时 " + Math.round(stats.ms.total || 0) + "ms");
@@ -311,9 +421,9 @@ function addShot(n, originalUrl, depthUrl, stats) {
     + '<img class="top" id="ov' + n + '" src="' + depthUrl + '" alt="深度图" style="opacity:.5">'
     + '</div>'
     + '<div class="cbar">'
-    + '<span class="lab" style="color:#e07a5f">近</span>'
+    + '<span class="lab" style="color:#d0553f">近</span>'
     + '<div class="grad" title="相对深度：越红越近，越蓝越远（DA3-BASE 不输出绝对米数）"></div>'
-    + '<span class="lab" style="color:#7a9fd6">远</span>'
+    + '<span class="lab" style="color:#3e7dc8">远</span>'
     + '</div>'
     + '</div>'
     + '<div class="ov-ctl">'
@@ -360,6 +470,20 @@ drop.addEventListener("drop", e => {
   e.preventDefault(); drop.classList.remove("over");
   handleFile(e.dataTransfer.files[0]);
 });
+
+// ?demo=1：加载服务端金标准图对（demo_rgb.jpg + demo_depth.png，真实模型输出），
+// 展示结果卡长相用，不碰摄像头、不占引擎
+(async () => {
+  if (Q.get("demo") !== "1") return;
+  try {
+    const [a, d] = await Promise.all([
+      fetch("/demo/demo_rgb.jpg").then(r => { if (!r.ok) throw new Error("缺原图"); return r.blob(); }),
+      fetch("/demo/demo_depth.png").then(r => { if (!r.ok) throw new Error("缺深度图"); return r.blob(); })
+    ]);
+    addShot(1, URL.createObjectURL(a), URL.createObjectURL(d), {});
+    setMsg("示例图（?demo=1）", ok=true);
+  } catch (e) { setMsg("示例图缺失：" + e.message, err=true); }
+})();
 
 // ── 服务探活 + 心跳 + 生命周期（与 asr/tts demo 同款）──────────────
 async function pollStatus() {

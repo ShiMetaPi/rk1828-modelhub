@@ -2,7 +2,7 @@
 # vl demo 部署脚本（在板子上跑）
 #
 # 用法:
-#   GITHUB_REPO=owner/name sh deploy.sh
+#   sh deploy.sh（默认拉本仓库 Releases；GITHUB_REPO=owner/name 可换源）
 #
 # 做的事:
 #   - 从 GitHub Releases 下载 vl demo 所需的模型 + .so
@@ -13,13 +13,13 @@
 #   - 可重复执行：已就位且校验通过的文件自动跳过
 #
 # 可用环境变量覆盖默认:
-#   GITHUB_REPO     必填，仓库
+#   GITHUB_REPO     仓库，默认 ShiMetaPi/rk1828-modelhub
 #   RELEASE_TAG     Release 标签，默认 models-vl
 #   MODEL_DIR       模型根目录，默认 /userdata/models/qwen2.5-vl-3b
 #   DL_DIR          下载缓存，默认 /userdata/tmp/vl
 set -e
 
-REPO="${GITHUB_REPO:?先设置 GITHUB_REPO=owner/name}"
+REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-vl}"
 MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen2.5-vl-3b}"
 DL="${DL_DIR:-/userdata/tmp/vl}"

@@ -2,7 +2,7 @@
 # chat demo 部署脚本（在板子上跑）
 #
 # 用法:
-#   GITHUB_REPO=owner/name sh deploy.sh [w4|w8|all]
+#   sh deploy.sh [w4|w8|all]（默认拉本仓库 Releases；GITHUB_REPO=owner/name 可换源）
 #
 # 做的事:
 #   - 从 GitHub Releases 下载 chat demo 所需的模型资产
@@ -13,14 +13,14 @@
 #   - 可重复执行：已就位且校验通过的文件自动跳过
 #
 # 可用环境变量覆盖默认:
-#   GITHUB_REPO    必填，仓库（owner/name）
+#   GITHUB_REPO    仓库（owner/name），默认 ShiMetaPi/rk1828-modelhub
 #   RELEASE_TAG    Release 标签，默认 models-chat
 #   W4_DIR         W4 模型目录，默认 /root/rknn_MiniCPM5_2B_demo
 #   W8_DIR         W8 模型目录，默认 /root/w8a16
 #   DL_DIR         下载缓存，默认 /userdata/tmp/chat
 set -e
 
-REPO="${GITHUB_REPO:?先设置 GITHUB_REPO=owner/name}"
+REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-chat}"
 W4_DIR="${W4_DIR:-/root/rknn_MiniCPM5_2B_demo}"
 W8_DIR="${W8_DIR:-/root/w8a16}"

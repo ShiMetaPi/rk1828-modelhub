@@ -2,7 +2,7 @@
 # TTS demo 部署脚本（在板子上跑）
 #
 # 用法:
-#   GITHUB_REPO=owner/name sh deploy.sh
+#   sh deploy.sh（默认拉本仓库 Releases；GITHUB_REPO=owner/name 可换源）
 #
 # 做的事:
 #   - 从 GitHub Releases 下载 TTS demo 所需的 12 个模型文件
@@ -12,13 +12,13 @@
 #   - 可重复执行：已就位且校验通过的文件自动跳过
 #
 # 可用环境变量覆盖默认:
-#   GITHUB_REPO    必填，仓库（owner/name）
+#   GITHUB_REPO    仓库（owner/name），默认 ShiMetaPi/rk1828-modelhub
 #   RELEASE_TAG    Release 标签，默认 models-tts
 #   MODEL_DIR       模型根目录（平铺），默认 /userdata/models/qwen3-tts
 #   DL_DIR          下载缓存，默认 /userdata/tmp/tts
 set -e
 
-REPO="${GITHUB_REPO:?先设置 GITHUB_REPO=owner/name}"
+REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-tts}"
 MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen3-tts}"
 DL="${DL_DIR:-/userdata/tmp/tts}"

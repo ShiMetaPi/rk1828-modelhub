@@ -2,7 +2,7 @@
 # YOLO26 demo 部署脚本（在板子上跑）
 #
 # 用法:
-#   GITHUB_REPO=owner/name sh deploy.sh
+#   sh deploy.sh（默认拉本仓库 Releases；GITHUB_REPO=owner/name 可换源）
 #
 # 做的事:
 #   - 从 GitHub Releases 下载 YOLO26n det/seg/pose 三模型（W8A8 INT8，rknn + weight）
@@ -11,13 +11,13 @@
 #   - 可重复执行：已就位且校验通过的文件自动跳过
 #
 # 可用环境变量覆盖默认:
-#   GITHUB_REPO    必填，仓库（owner/name）
+#   GITHUB_REPO    仓库（owner/name），默认 ShiMetaPi/rk1828-modelhub
 #   RELEASE_TAG    Release 标签，默认 models-yolo26
 #   MODEL_DIR      模型目录，默认 <脚本所在目录>/model
 #   DL_DIR         下载缓存，默认 /userdata/tmp/yolo26
 set -e
 
-REPO="${GITHUB_REPO:?先设置 GITHUB_REPO=owner/name}"
+REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-yolo26}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 MODEL_DIR="${MODEL_DIR:-$HERE/model}"

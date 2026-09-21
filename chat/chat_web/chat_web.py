@@ -58,8 +58,9 @@ SUMMARY_KEEP = 10    # 摘要列表上限，超过把最老的并进 merged_old
 SUMMARY_MERGE_N = 5  # 每次合并的条数
 SUMMARY_Q, SUMMARY_A = 60, 200   # 摘要调用里问/答截断（字符）
 MAX_TOKENS = 1024   # 单条回答上限
-TEMPERATURE = 0.7
-REPEAT_PENALTY = 1.1   # 不加会复读机循环（实测）
+TOP_K = 1            # 贪心解码：无 top_k 时 temp 采样会偶尔首 token 抽到 EOS → 空响应
+TEMPERATURE = 1.0    # 对齐官方采样（top_k=1 时温度不起作用，仅文档对齐）
+REPEAT_PENALTY = 1.2  # 贪心 + 惩罚防复读（实测 1.1 不够）
 
 GRACE_SECS = 75     # 心跳消失多久算"页面已关"（覆盖后台标签页限速到 1 次/分钟）
 NPU_CAP_MB = 5120   # NPU 设备内存池（rknn-smi）
@@ -249,7 +250,7 @@ def llm_once(messages, max_tokens=SUMMARY_MAX):
         "top_k": SUMMARY_TOPK,
         "repeat_penalty": REPEAT_PENALTY,
         "stream": False,
-        "chat_template_kwargs": {"enable_thinking": False},
+        "enable_thinking": False,
     }).encode()
     req = urllib.request.Request(
         "http://127.0.0.1:%d/v1/chat/completions" % MODEL_PORT, data=payload,
@@ -402,11 +403,12 @@ def do_chat(handler, text):
             "messages": sys_msg + history,
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
+            "top_k": TOP_K,
             "repeat_penalty": REPEAT_PENALTY,
             "stream": True,
-            # 模板支持 enable_thinking：False 时预置空 <think></think>，直接出答案
-            # （默认关——实测开思考会啰嗦几百 token 甚至烧光 max_tokens 没正文）
-            "chat_template_kwargs": {"enable_thinking": False},
+            # enable_thinking 必须是顶层字段（放 chat_template_kwargs 里模板收不到），
+            # False 时预置空 <think></think> 直接出答案；开思考会啰嗦几百 token 烧光 max_tokens
+            "enable_thinking": False,
         }).encode()
         req = urllib.request.Request(
             "http://127.0.0.1:%d/v1/chat/completions" % MODEL_PORT, data=payload,

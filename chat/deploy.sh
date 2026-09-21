@@ -58,7 +58,7 @@ md5_of() {
 }
 
 fetch() {
-  curl -fL --retry 5 --retry-delay 3 -C - -o "$2" "$1"
+  curl -fL --retry 10 --retry-delay 3 --retry-all-errors --limit-rate 20M -C - -o "$2" "$1"
 }
 
 deploy_one() {   # $1=资产名 $2=目标绝对路径

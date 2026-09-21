@@ -26,6 +26,10 @@ W4_DIR="${W4_DIR:-/root/rknn_MiniCPM5_2B_demo}"
 W8_DIR="${W8_DIR:-/root/w8a16}"
 DL="${DL_DIR:-/userdata/tmp/chat}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
+# MIRROR_URL 指向本地镜像根（如 http://169.254.62.175:8000），设了就直连本地拉模型、绕开外网更快
+if [ -n "$MIRROR_URL" ]; then
+  BASE="$MIRROR_URL/$TAG"
+fi
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 WHAT="${1:-all}"

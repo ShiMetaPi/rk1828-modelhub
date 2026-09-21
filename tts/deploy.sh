@@ -23,6 +23,10 @@ TAG="${RELEASE_TAG:-models-tts}"
 MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen3-tts}"
 DL="${DL_DIR:-/userdata/tmp/tts}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
+# MIRROR_URL 指向本地镜像根（如 http://169.254.62.175:8000），设了就直连本地拉模型、绕开外网更快
+if [ -n "$MIRROR_URL" ]; then
+  BASE="$MIRROR_URL/$TAG"
+fi
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 # 资产清单：资产名|目标相对路径（全部平铺在 MODEL_DIR 下）

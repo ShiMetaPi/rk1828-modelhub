@@ -9,8 +9,36 @@ python -m http.server 不支持 Range 请求，板上 deploy.sh 的 curl -C - �
 import argparse
 import os
 import re
+import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+
+# 自适应限速器：全局一份，跨连接共享。
+# 块大小固定 256KB（块大才是 yt6801 掉链根因，见其 8KB RX FIFO），只自适应调节每块后的 sleep：
+#   整文件传完 → 加速 15%；写 socket 掉链（网卡 RST）→ 减速一半。
+# 夹在 [4ms≈64MB/s, 60ms≈4MB/s]，起始 20MB/s（历史上证安全）。
+class _AdaptivePacer:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._sleep = 0.012
+        self._min = 0.004
+        self._max = 0.060
+
+    def sleep(self):
+        with self._lock:
+            return self._sleep
+
+    def speedup(self):
+        with self._lock:
+            self._sleep = max(self._sleep * 0.85, self._min)
+
+    def slowdown(self):
+        with self._lock:
+            self._sleep = min(self._sleep * 2.0, self._max)
+
+
+PACER = _AdaptivePacer()
 
 
 class RangeHandler(SimpleHTTPRequestHandler):
@@ -19,18 +47,29 @@ class RangeHandler(SimpleHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'    # Content-Length 两条路径都必有，可开长连接
 
     def copyfile(self, src, dst):
-        # 限速：每 256KB 歇 12ms（约 20MB/s），小突发平滑输出。
-        # 板载 yt6801 网卡（RX FIFO 仅 8KB）扛不住线速突发，会掉链。
+        # 自适应限速（见 _AdaptivePacer）：256KB 小块平滑输出，每块后 sleep 由 PACER 决定。
+        # 每 16MB 无掉链 → 加一档速（大文件内部也会爬坡）；写 socket 掉链（yt6801 网卡 RST）→ 减速一半。
         total = 0
-        while True:
-            buf = src.read(1 << 18)
-            if not buf:
-                break
-            dst.write(buf)
-            total += len(buf)
-            if total >= (1 << 18):
-                time.sleep(0.012)
-                total = 0
+        clean_chunks = 0
+        try:
+            while True:
+                buf = src.read(1 << 18)
+                if not buf:
+                    break
+                dst.write(buf)
+                total += len(buf)
+                if total >= (1 << 18):
+                    time.sleep(PACER.sleep())
+                    total = 0
+                    clean_chunks += 1
+                    if clean_chunks >= 64:   # 16MB 无掉链，往上爬一档
+                        PACER.speedup()
+                        clean_chunks = 0
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            PACER.slowdown()
+            raise
+        else:
+            PACER.speedup()
 
     def end_headers(self):
         self.send_header('Accept-Ranges', 'bytes')

@@ -23,6 +23,10 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 MODEL_DIR="${MODEL_DIR:-$HERE/model}"
 DL="${DL_DIR:-/userdata/tmp/yolo26}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
+# MIRROR_URL 指向本地镜像根（如 http://169.254.62.175:8000），设了就直连本地拉模型、绕开外网更快
+if [ -n "$MIRROR_URL" ]; then
+  BASE="$MIRROR_URL/$TAG"
+fi
 
 # 资产清单：资产名|目标相对路径（平铺在 MODEL_DIR 下）
 FILES="yolo26n-seg.rknn|yolo26n-seg.rknn

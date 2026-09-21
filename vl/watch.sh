@@ -16,10 +16,10 @@ while true; do
   now=$(date +%s)
   last=$(stat -c %Y "$LAST" 2>/dev/null || echo 0)
   age=$((now - last))
-  if pgrep -f "[v]l_demo/vl_engine" >/dev/null; then
+  if pgrep -f "[v]l_engine" >/dev/null; then
     if [ $age -gt $GRACE ]; then
       echo "$(date '+%H:%M:%S') 页面已关闭，释放引擎" >> /tmp/vl_watch.log
-      pkill -f "[v]l_demo/vl_engine"
+      pkill -f "[v]l_engine"
       sleep 3
     fi
   elif [ $age -le 10 ]; then

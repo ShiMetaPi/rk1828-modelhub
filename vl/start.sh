@@ -6,9 +6,9 @@
 DIR=$(cd "$(dirname "$0")" && pwd)
 MODE=${1:-real}
 # 停本 demo 旧进程（模式加括号防止 pkill 匹配到自身——历史踩坑）
-pkill -f "[v]l_demo/vl_engine" 2>/dev/null
-pkill -f "[v]l_demo/web/web.py" 2>/dev/null
-pkill -f "[v]l_demo/watch.sh" 2>/dev/null
+pkill -f "[v]l_engine" 2>/dev/null
+pkill -f "[v]l/web/web.py" 2>/dev/null
+pkill -f "[v]l/watch.sh" 2>/dev/null
 sleep 1
 if [ "$1" = "stop" ]; then echo STOPPED; exit 0; fi
 
@@ -37,6 +37,6 @@ check_deps || exit 1
 setsid nohup sh "$DIR/watch.sh" $MODE > /tmp/vl_watch.log 2>&1 < /dev/null &
 python3 "$DIR/web/web.py"
 # 兜底清场（正常路径 web.py 退出前已自行杀掉 watch/引擎）
-pkill -f "[v]l_demo/watch.sh" 2>/dev/null
-pkill -f "[v]l_demo/vl_engine" 2>/dev/null
+pkill -f "[v]l/watch.sh" 2>/dev/null
+pkill -f "[v]l_engine" 2>/dev/null
 echo "[vl] 已退出，可重新运行 start.sh"

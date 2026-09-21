@@ -173,6 +173,7 @@ def ensure_server(quant):
                " --model %s/MiniCPM5-2B.rknn --weight %s/MiniCPM5-2B.weight"
                " --vocab %s --embed %s"
                " --chat-template-file %s"
+               " --reasoning off"   # 关思考：MiniCPM5 混合推理，auto 下复杂问题会思考到烧光 max_tokens 没正文
                " --host 0.0.0.0 --port %d --alias minicpm5-%s"
                " > /tmp/rkllm3-server.log 2>&1" % (d, d, VOCAB, EMBED,
                                                     CHAT_TEMPLATE, MODEL_PORT, quant))
@@ -406,8 +407,8 @@ def do_chat(handler, text):
             "top_k": TOP_K,
             "repeat_penalty": REPEAT_PENALTY,
             "stream": True,
-            # enable_thinking 必须是顶层字段（放 chat_template_kwargs 里模板收不到），
-            # False 时预置空 <think></think> 直接出答案；开思考会啰嗦几百 token 烧光 max_tokens
+            # 思考已在 server 端 --reasoning off 关掉（enable_thinking 字段对 MiniCPM5 混合推理不起作用，
+            # 只是冗余兜底）；真正防空响应的是上面的 top_k=1（贪心）
             "enable_thinking": False,
         }).encode()
         req = urllib.request.Request(

@@ -9,6 +9,7 @@ python -m http.server 不支持 Range 请求，板上 deploy.sh 的 curl -C - �
 import argparse
 import os
 import re
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -16,6 +17,20 @@ class RangeHandler(SimpleHTTPRequestHandler):
     """在 SimpleHTTPRequestHandler 上补单区间 Range（bytes=N- / N-M / -N）。"""
 
     protocol_version = 'HTTP/1.1'    # Content-Length 两条路径都必有，可开长连接
+
+    def copyfile(self, src, dst):
+        # 限速：每 2MB 歇 60ms（约 30MB/s 上限）。千兆直连链路跑满线速会掉线
+        # （Realtek 高负载 RST），板端 deploy 断点续传虽能兜底，但限速后一次过更稳。
+        total = 0
+        while True:
+            buf = src.read(1 << 18)
+            if not buf:
+                break
+            dst.write(buf)
+            total += len(buf)
+            if total >= (2 << 20):
+                time.sleep(0.06)
+                total = 0
 
     def end_headers(self):
         self.send_header('Accept-Ranges', 'bytes')

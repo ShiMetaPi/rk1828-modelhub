@@ -18,8 +18,9 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ── 配置 ──────────────────────────────────────────────────────────────
-YOLO_MODEL_DIR = os.environ.get("YOLO_MODEL_DIR", "/root/yolo26_demo/model")
-YOLO_BIN       = os.environ.get("YOLO_BIN", "/root/yolo26_demo/yolo26_engine")
+_THIS_DIR      = os.path.dirname(os.path.abspath(__file__))
+YOLO_MODEL_DIR = os.environ.get("YOLO_MODEL_DIR", os.path.join(_THIS_DIR, "model"))
+YOLO_BIN       = os.environ.get("YOLO_BIN", os.path.join(_THIS_DIR, "yolo26_engine"))
 YOLO_SOCK      = os.environ.get("YOLO_SOCK", "/tmp/yolo26_engine.sock")
 PORT           = 8092
 TASK           = "seg"  # 当前任务（页面 /api/task 可切换）

@@ -6,7 +6,7 @@ set -e
 
 cd "$(dirname "$0")"
 DEMO_DIR="$(pwd)"
-MODEL_DIR="${MODEL_DIR:-/root/depth_demo/model}"
+MODEL_DIR="${MODEL_DIR:-$DEMO_DIR/model}"
 DEPTH_BIN="${DEMO_DIR}/depth_engine"
 
 # ── 依赖探测：缺什么列什么 ──────────────────────────────────────────

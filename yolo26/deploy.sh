@@ -74,4 +74,4 @@ echo "$FILES" | while IFS='|' read -r name rel; do
 done
 
 echo
-echo "全部完成。启动:  cd /root/yolo26_demo && sh start.sh"
+echo "全部完成。启动:  sh start.sh"

@@ -17,8 +17,9 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ── 配置 ──────────────────────────────────────────────────────────────
-DEPTH_MODEL_DIR = os.environ.get("DEPTH_MODEL_DIR", "/root/depth_demo/model")
-DEPTH_BIN       = os.environ.get("DEPTH_BIN", "/root/depth_demo/depth_engine")
+_THIS_DIR       = os.path.dirname(os.path.abspath(__file__))
+DEPTH_MODEL_DIR = os.environ.get("DEPTH_MODEL_DIR", os.path.join(_THIS_DIR, "model"))
+DEPTH_BIN       = os.environ.get("DEPTH_BIN", os.path.join(_THIS_DIR, "depth_engine"))
 DEPTH_SOCK      = os.environ.get("DEPTH_SOCK", "/tmp/depth_engine.sock")
 PORT            = 8091
 

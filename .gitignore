@@ -46,6 +46,9 @@ asr/*.wav
 # 本地模型镜像（PC 端给离线板子中转用，10GB，不进 git）
 release_mirror/
 
+# 拍摄分镜 / 板端内部分档（含个人 IP、环境信息，不进公开仓库）
+docs/
+
 # 板上实测留下的测试图 / 摄像头抓拍（含个人环境画面）
 yolo26/model/
 depth/demo_*

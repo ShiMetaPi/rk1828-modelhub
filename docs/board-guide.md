@@ -59,8 +59,8 @@ sh /root/record.sh stop          # 停止，文件立即可播放
 git clone https://github.com/ShiMetaPi/rk1828-modelhub      # 或 Gitee 镜像
 cd rk1828-modelhub
 
-# 2. 下载 5 个模型包（每个 demo 一个 Release tag，共约 10GB）
-for t in models-vl models-tts models-asr models-depth models-yolo26; do
+# 2. 下载 6 个模型包（每个 demo 一个 Release tag，共约 15GB；chat 一家就 4.6GB）
+for t in models-vl models-tts models-asr models-depth models-yolo26 models-chat; do
   gh release download $t -D release_mirror/$t
 done
 
@@ -70,6 +70,10 @@ for pair in "vl vl" "tts tts" "asr asr" "depth depth" "yolo26 yolo26"; do
   tar cf - --exclude='__pycache__' -C $1 . | \
     ssh root@169.254.62.200 "mkdir -p /root/$2_demo && tar xf - -C /root/$2_demo"
 done
+
+# chat 布局不同：网页 + deploy.sh 平铺进 /root/chat_web
+tar cf - --exclude='__pycache__' -C chat/chat_web . -C .. deploy.sh minicpm5.jinja | \
+  ssh root@169.254.62.200 "mkdir -p /root/chat_web && tar xf - -C /root/chat_web"
 
 # 4. 起本地模型服务 + 反向隧道（板子离线，deploy.sh 的下载走这条隧道）
 python -m http.server 8000 -d release_mirror &
@@ -88,6 +92,7 @@ cd /root/tts_demo    && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-tts 
 cd /root/asr_demo    && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-asr    sh deploy.sh
 cd /root/depth_demo  && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-depth  sh deploy.sh
 cd /root/yolo26_demo && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-yolo26 sh deploy.sh
+cd /root/chat_web    && GITHUB_REPO=x BASE_URL=http://127.0.0.1:8000/models-chat  sh deploy.sh   # w4 / w8 / all 可选，默认 all
 
 # 恢复自定义音色（声音克隆的声纹文件，tts）
 mkdir -p /userdata/models/qwen3-tts/voices && cp /root/tts_demo/voices/*.npy $_/
@@ -102,7 +107,7 @@ sh /root/yolo26_demo/start.sh
 
 | 路径 | 内容 | 说明 |
 |---|---|---|
-| `/root/*_demo/` | 代码 + 小模型（asr 2.9G / depth 1.1G / yolo26 12M） | 根分区 |
+| `/root/*_demo/` | 代码 + 小模型（asr 2.9G / depth 1.1G / yolo26 12M） | 根分区；chat 的模型 4.6G 也在根分区（`/root/rknn_MiniCPM5_2B_demo`、`/root/w8a16`），**全装共存会爆**——chat 用完建议清掉再装别的，或只装 `w4`（2G） |
 | `/userdata/models/` | 大模型（vl 2.9G / tts 3.4G 平铺） | 独立分区，空间大 |
 | `/userdata/tmp/` | deploy.sh 的下载缓存 | 下完自动挪走，可随时清 |
 

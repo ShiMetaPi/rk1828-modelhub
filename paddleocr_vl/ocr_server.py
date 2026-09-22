@@ -433,8 +433,9 @@ def main():
     global SERVER
     SERVER = srv
 
-    # open browser in DISPLAY=:0 unless explicitly suppressed
-    if os.environ.get("OCR_OPEN_BROWSER") == "1":
+    # Auto-open chromium in DISPLAY=:0 unless explicitly suppressed
+    # (set OCR_NO_BROWSER=1 to skip; matches vl/tts/asr/depth/yolo26 behavior).
+    if os.environ.get("OCR_NO_BROWSER") != "1":
         def _open():
             time.sleep(2)
             try:

@@ -43,21 +43,42 @@
 | 模型（yolo26n det / seg / pose 各一对 rknn + weight） | `<demo 目录>/model/` |
 | USB 摄像头（可选） | UVC 协议即可；没有就用上传图片模式 |
 
+**网络**：deploy 阶段要从 GitHub Releases 下载模型（才 11.5MB，一般不愁）；走代理的话先设好再跑（地址和端口换成自己的）：
+
+```bash
+export http_proxy=http://<代理地址>:<你的端口> https_proxy=http://<代理地址>:<你的端口>
+```
+
 ## 跑起来
 
 ```bash
-# 传到板子
-ssh root@<板子IP> "mkdir -p /root/yolo26_demo"
-scp -r yolo26/* root@<板子IP>:/root/yolo26_demo/
+# 1) 拿代码（GitHub / Gitee 二选一；板子上已有仓库就 git pull）
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git
+# git clone https://gitee.com/ShiMetaPi_0/rk1828-modelhub.git   # 国内快
 
-# 拉模型（在板上，共约 11.5MB；断点续传 + MD5 校验，可重复跑）
-ssh root@<板子IP> "GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh /root/yolo26_demo/deploy.sh"
+# 2) 拉模型（共约 11.5MB；断点续传 + MD5 校验）
+cd rk1828-modelhub/yolo26
+sh deploy.sh
 
-# 启动（首次会自动编译 C++ 引擎，约几十秒）
-ssh root@<板子IP> "sh /root/yolo26_demo/start.sh"
+# 3) 启动（首次运行会先自动编译 C++ 引擎，约几十秒）
+sh start.sh
 ```
 
-运行后板子浏览器自动打开页面；也可手动开 **http://<板子IP>:8092**。
+运行后板子浏览器自动打开页面。从电脑访问：同网段直接开 **http://<板子IP>:8092**；点对点直连先在电脑上转发端口，再开 `http://127.0.0.1:<你的端口>`：
+
+```bash
+ssh -L <你的端口>:127.0.0.1:8092 root@<板子IP>
+```
+
+### 板子下载慢？在电脑上先下好
+
+用浏览器打开 [models-yolo26 Release](https://github.com/ShiMetaPi/rk1828-modelhub/releases/tag/models-yolo26) 把 6 个模型文件全部下载，拷进板子 demo 的 `model/`：
+
+```bash
+scp yolo26n-*.rknn yolo26n-*.weight root@<板子IP>:<仓库路径>/yolo26/model/
+```
+
+放好后照样跑 `sh deploy.sh`：已就位且 MD5 正确的文件直接跳过下载。
 
 - **实时**：点「开始摄像头」，画面上直接出框和彩罩，右上角看 FPS / 引擎耗时 / 页面耗时
 - **切换任务**：点「检测 / 分割 / 姿态」页签，引擎换模型约 0.3 秒；摄像头模式停帧再续流，传图模式自动重推当前图

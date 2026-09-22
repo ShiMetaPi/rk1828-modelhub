@@ -19,21 +19,42 @@
 | 模型（6 个：local / global / head 的 rknn+weight） | `<demo 目录>/model/` |
 | USB 摄像头（可选） | UVC 协议即可；没有就用上传图片模式 |
 
+**网络**：deploy 阶段要从 GitHub Releases 下载约 1.1GB，板子得能上网；走代理的话先设好再跑（地址和端口换成自己的）：
+
+```bash
+export http_proxy=http://<代理地址>:<你的端口> https_proxy=http://<代理地址>:<你的端口>
+```
+
 ## 跑起来
 
 ```bash
-# 传到板子
-ssh root@<板子IP> "mkdir -p /root/depth_demo"
-scp -r depth/* root@<板子IP>:/root/depth_demo/
+# 1) 拿代码（GitHub / Gitee 二选一；板子上已有仓库就 git pull）
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git
+# git clone https://gitee.com/ShiMetaPi_0/rk1828-modelhub.git   # 国内快
 
-# 拉模型（在板上，约 1.1GB；断点续传 + MD5 校验，可重复跑）
-ssh root@<板子IP> "GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh /root/depth_demo/deploy.sh"
+# 2) 拉模型（约 1.1GB；断点续传 + MD5 校验，中断了重跑接着下）
+cd rk1828-modelhub/depth
+sh deploy.sh
 
-# 启动（首次会自动编译 C++ 引擎，约几十秒）
-ssh root@<板子IP> "sh /root/depth_demo/start.sh"
+# 3) 启动（首次运行会先自动编译 C++ 引擎，约几十秒）
+sh start.sh
 ```
 
-运行后板子浏览器自动打开页面；也可手动开 **http://<板子IP>:8091**。
+运行后板子浏览器自动打开页面。从电脑访问：同网段直接开 **http://<板子IP>:8091**；点对点直连先在电脑上转发端口，再开 `http://127.0.0.1:<你的端口>`：
+
+```bash
+ssh -L <你的端口>:127.0.0.1:8091 root@<板子IP>
+```
+
+### 板子下载慢？在电脑上先下好
+
+用浏览器打开 [models-depth Release](https://github.com/ShiMetaPi/rk1828-modelhub/releases/tag/models-depth) 把 6 个模型文件全部下载，拷进板子 demo 的 `model/`：
+
+```bash
+scp da3_base_*.rknn da3_base_*.weight root@<板子IP>:<仓库路径>/depth/model/
+```
+
+放好后照样跑 `sh deploy.sh`：已就位且 MD5 正确的文件直接跳过下载。
 
 - **拍摄**：取景框是方形（模型输入就是方形，所见即所得），点红圆点出「原图 vs 深度图」+ 叠加对比
 - **上传**：点虚线框或拖图进去，自动取画面中央的方形区域，效果相同

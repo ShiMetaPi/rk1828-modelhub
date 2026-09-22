@@ -9,30 +9,55 @@
 ## 准备
 
 - 板子系统里要有 `rkllm3-server`；`start.sh` 会自动探测，缺了会告诉你
-- **记忆功能（可选）**：`sh setup_memory.sh` 装好 mem0 环境后自动开启。长期事实（偏好、工作地点、之前聊过的话题等）跨轮不丢；名字/自我介绍类问题因模型 rlhf 固化仍是已知限制。默认不开（自动降级为仅会话内档案）
-
-- 模型放到板子上（运行本目录下的 `deploy.sh` 一键拉取、校验、放到默认位置），程序默认从这些位置读：
+- 模型和聊天模板由本目录下的 `deploy.sh` 一键拉取、校验，放到默认位置：
 
 | 东西 | 板子上的位置 |
 |---|---|
-| W4 模型（四个文件：rknn / weight / embed.bin / tokenizer.gguf） | `/root/rknn_MiniCPM5_2B_demo/model/` |
-| W8 模型（rknn / weight，词表和 embed 跟 W4 共用） | `/root/w8a16/` |
-| 聊天模板 minicpm5.jinja（本目录里就有） | `/root/rknn_MiniCPM5_2B_demo/` |
+| W4 模型（四个文件：rknn / weight / embed.bin / tokenizer.gguf） | `<demo 目录>/model/w4/` |
+| W8 模型（rknn / weight，词表和 embed 跟 W4 共用） | `<demo 目录>/model/w8/` |
+| 聊天模板 minicpm5.jinja（仓库里就有，deploy 顺手放好） | `<demo 目录>/model/` |
+
+**网络**：deploy 阶段要从 GitHub Releases 下载约 4.4GB 模型，板子得能上网；走代理的话先设好再跑（地址和端口换成自己的）：
+
+```bash
+export http_proxy=http://<代理地址>:<你的端口> https_proxy=http://<代理地址>:<你的端口>
+```
 
 ## 跑起来
 
 ```bash
-# 传到板子（同其他 demo：整个 chat/ 目录 → /root/chat_demo）
-tar cf - --exclude='__pycache__' -C chat . | ssh root@<板子IP> "mkdir -p /root/chat_demo && tar xf - -C /root/chat_demo"
+# 1) 拿代码（GitHub / Gitee 二选一；板子上已有仓库就 git pull）
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git
+# git clone https://gitee.com/ShiMetaPi_0/rk1828-modelhub.git   # 国内快
 
-# 拉模型（跑过的话可跳过；会把聊天模板 minicpm5.jinja 一并放好）
-ssh root@<板子IP> "cd /root/chat_demo && GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh deploy.sh"
+# 2) 拉模型（约 4.4GB；断点续传 + MD5 校验，中断了重跑接着下）
+cd rk1828-modelhub/chat
+sh deploy.sh
 
-# 启动（这时只起了网页壳，还没加载模型）
-ssh root@<板子IP> "sh /root/chat_demo/start.sh"
+# 3) 启动（这时只起了网页壳，还没加载模型）
+sh start.sh
 ```
 
-运行后板子浏览器自动打开页面（约 2 秒），模型在页面打开后才开始加载，等十几秒就能聊了；也可手动开 **http://<板子IP>:8089**。
+运行后板子浏览器自动打开页面（约 2 秒），模型在页面打开后才开始加载，等十几秒就能聊了。从电脑访问：板子和电脑同网段就直接开 **http://<板子IP>:8089**；点对点直连的话先在电脑上转发端口，再开 `http://127.0.0.1:<你的端口>`：
+
+```bash
+ssh -L <你的端口>:127.0.0.1:8089 root@<板子IP>
+```
+
+### 板子下载慢？在电脑上先下好
+
+用浏览器打开 [models-chat Release](https://github.com/ShiMetaPi/rk1828-modelhub/releases/tag/models-chat) 把 6 个模型文件全部下载，拷进板子 demo 的 `model/`。注意 W8 的两个文件放进 `model/w8/` 时要**改名去掉 `-w8`**：
+
+| 下载的文件 | 放到板子哪里 |
+|---|---|
+| MiniCPM5-2B.rknn / .weight / .embed.bin / .tokenizer.gguf | `chat/model/w4/`（名字不变） |
+| MiniCPM5-2B-w8.rknn / MiniCPM5-2B-w8.weight | `chat/model/w8/`，改名为 MiniCPM5-2B.rknn / MiniCPM5-2B.weight |
+
+```bash
+scp MiniCPM5-2B.* root@<板子IP>:<仓库路径>/chat/model/w4/
+```
+
+超过 2GB 的文件在 Release 上是分片（`xxx.part-aa`、`xxx.part-ab`…），要把分片下齐、在电脑上拼回原文件再传：Windows `copy /b xxx.part-aa+xxx.part-ab xxx`，Linux/mac `cat xxx.part-* > xxx`。放好后照样跑 `sh deploy.sh`：已就位且 MD5 正确的文件直接跳过下载。
 
 ## 模型什么时候加载？
 
@@ -47,7 +72,7 @@ ssh root@<板子IP> "sh /root/chat_demo/start.sh"
 ## 停掉
 
 ```bash
-ssh root@<板子IP> "sh /root/chat_demo/start.sh stop"
+sh <demo 目录>/start.sh stop
 ```
 
 <details>

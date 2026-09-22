@@ -103,15 +103,16 @@ YOLO26n **检测 / 分割 / 姿态**三页签一键切换（换模型约 0.3 秒
 
 ## 怎么跑
 
-六个 demo 套路一样，就三步：**进目录 → 拉模型 → 启动**。
+六个 demo 套路一样，就四步：**拿代码 → 进目录 → 拉模型 → 启动**。
 
 ```bash
-cd <demo 目录>                                         # chat / vl / tts / asr / depth / yolo26
-GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh deploy.sh     # 只拉这个 demo 需要的模型
-sh start.sh                                            # 起网页服务
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git   # 或 Gitee（国内快）
+cd rk1828-modelhub/<demo 目录>                              # chat / vl / tts / asr / depth / yolo26
+sh deploy.sh                                                # 只拉这个 demo 需要的模型
+sh start.sh                                                 # 起网页服务
 ```
 
-模型从 GitHub Releases 下载，`deploy.sh` 带断点续传和 MD5 校验，传到一半断了重跑就行；启动脚本会自己探测缺什么依赖，缺了直接告诉你。
+模型从 GitHub Releases 下载，`deploy.sh` 带断点续传和 MD5 校验，传到一半断了重跑就行；启动脚本会自己探测缺什么依赖，缺了直接告诉你。板子下载慢或不方便联网时，可以先在电脑上把模型下好再拷进 demo 的 `model/`——具体做法看各 demo README 里的「板子下载慢？在电脑上先下好」。
 
 浏览器打开对应端口：聊天 **8089** · 视频问答 **8080** · 语音合成 **8088** · 语音字幕 **8090** · 深度相机 **8091** · 实时识别 **8092**。具体步骤、模型大小、板上路径都在各自的 README 里，点进去照着做就行。
 

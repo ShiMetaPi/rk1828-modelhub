@@ -11,27 +11,51 @@
 ## 准备
 
 - 板子上要有 RKNN3 运行库 `librknn3_api.so`（`/usr/lib` 下）和头文件 `rknn3_api.h`（随 chat/vl demo 的 SDK 一起装）；首次跑 `start.sh` 会现编译 C++ 引擎，缺什么它会告诉你
-- 模型放到 `/userdata/models/qwen3-tts/`（运行本目录下的 `deploy.sh` 一键拉取、校验、放到默认位置）：12 个文件**平铺在同一目录**（引擎按文件名读取，没有子目录）
+- **先部署过 vl demo**：引擎编译用的 SDK（头文件 + libtokenizer.a）默认从 `../vl/engine` 取；vl 不在这台板上的话用环境变量 `TTS_SDK_ROOT` 指过去
+- 模型由本目录下的 `deploy.sh` 一键拉取、校验：15 个文件**平铺**进 `model/`（引擎按文件名读取，没有子目录）
 
 | 东西 | 板子上的位置 |
 |---|---|
-| 模型（12 个：talker / code_predictor / speech_decoder / text_projection 的 rknn+weight，tokenizer.json，3 个 embed） | `/userdata/models/qwen3-tts/` |
+| 模型（15 个：talker / code_predictor / speech_decoder / text_projection / spk_embed 的 rknn+weight，tokenizer.json，3 个 embed，mel 滤波器） | `<demo 目录>/model/` |
+
+**网络**：deploy 阶段要从 GitHub Releases 下载约 4GB，板子得能上网；走代理的话先设好再跑（地址和端口换成自己的）：
+
+```bash
+export http_proxy=http://<代理地址>:<你的端口> https_proxy=http://<代理地址>:<你的端口>
+```
 
 ## 跑起来
 
 ```bash
-# 传到板子
-ssh root@<板子IP> "mkdir -p /root/tts_demo"
-scp -r tts/* root@<板子IP>:/root/tts_demo/
+# 1) 拿代码（GitHub / Gitee 二选一；板子上已有仓库就 git pull）
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git
+# git clone https://gitee.com/ShiMetaPi_0/rk1828-modelhub.git   # 国内快
 
-# 拉模型（在板上，约 4GB；断点续传 + MD5 校验，可重复跑）
-ssh root@<板子IP> "GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh /root/tts_demo/deploy.sh"
+# 2) 拉模型（约 4GB；断点续传 + MD5 校验，中断了重跑接着下）
+cd rk1828-modelhub/tts
+sh deploy.sh
 
-# 启动（只起网页壳，模型等页面打开才加载）
-ssh root@<板子IP> "sh /root/tts_demo/start.sh"
+# 3) 启动（只起网页壳；首次运行会先自动编译 C++ 引擎，之后模型等页面打开才加载）
+sh start.sh
 ```
 
-运行后板子浏览器自动打开页面（约 2 秒）；也可手动开 **http://<板子IP>:8088**。输入文字（可选填「语气指令」、选「音色」），点「生成语音」即可。
+运行后板子浏览器自动打开页面（约 2 秒）。从电脑访问：同网段直接开 **http://<板子IP>:8088**；点对点直连先在电脑上转发端口，再开 `http://127.0.0.1:<你的端口>`：
+
+```bash
+ssh -L <你的端口>:127.0.0.1:8088 root@<板子IP>
+```
+
+输入文字（可选填「语气指令」、选「音色」），点「生成语音」即可。
+
+### 板子下载慢？在电脑上先下好
+
+用浏览器打开 [models-tts Release](https://github.com/ShiMetaPi/rk1828-modelhub/releases/tag/models-tts) 把 15 个文件全部下载，**平铺**拷进板子 demo 的 `model/`（不要建子目录）：
+
+```bash
+scp talker.rknn talker.weight ... root@<板子IP>:<仓库路径>/tts/model/
+```
+
+超过 2GB 的文件在 Release 上是分片（`xxx.part-aa`、`xxx.part-ab`…，如 talker.weight），要把分片下齐、在电脑上拼回原文件再传：Windows `copy /b xxx.part-aa+xxx.part-ab xxx`，Linux/mac `cat xxx.part-* > xxx`。放好后照样跑 `sh deploy.sh`：已就位且 MD5 正确的文件直接跳过下载。
 
 ## 模型什么时候加载？
 

@@ -17,21 +17,42 @@
 |---|---|
 | 模型（6 个：encoder_online 和 llm 的 rknn+weight，tokenizer.gguf，embed.bin） | `<demo 目录>/model/` |
 
+**网络**：deploy 阶段要从 GitHub Releases 下载约 2.4GB，板子得能上网；走代理的话先设好再跑（地址和端口换成自己的）：
+
+```bash
+export http_proxy=http://<代理地址>:<你的端口> https_proxy=http://<代理地址>:<你的端口>
+```
+
 ## 跑起来
 
 ```bash
-# 传到板子
-ssh root@<板子IP> "mkdir -p /root/asr_demo"
-scp -r asr/* root@<板子IP>:/root/asr_demo/
+# 1) 拿代码（GitHub / Gitee 二选一；板子上已有仓库就 git pull）
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git
+# git clone https://gitee.com/ShiMetaPi_0/rk1828-modelhub.git   # 国内快
 
-# 拉模型（在板上，约 2.4GB；断点续传 + MD5 校验，可重复跑）
-ssh root@<板子IP> "GITHUB_REPO=ShiMetaPi/rk1828-modelhub sh /root/asr_demo/deploy.sh"
+# 2) 拉模型（约 2.4GB；断点续传 + MD5 校验，中断了重跑接着下；板上零编译）
+cd rk1828-modelhub/asr
+sh deploy.sh
 
-# 启动
-ssh root@<板子IP> "sh /root/asr_demo/start.sh"
+# 3) 启动
+sh start.sh
 ```
 
-运行后板子浏览器自动打开页面；也可手动开 **http://<板子IP>:8090**。
+运行后板子浏览器自动打开页面。从电脑访问：同网段直接开 **http://<板子IP>:8090**；点对点直连先在电脑上转发端口，再开 `http://127.0.0.1:<你的端口>`：
+
+```bash
+ssh -L <你的端口>:127.0.0.1:8090 root@<板子IP>
+```
+
+### 板子下载慢？在电脑上先下好
+
+用浏览器打开 [models-asr Release](https://github.com/ShiMetaPi/rk1828-modelhub/releases/tag/models-asr) 把 6 个模型文件全部下载，拷进板子 demo 的 `model/`：
+
+```bash
+scp encoder_online.* llm.* root@<板子IP>:<仓库路径>/asr/model/
+```
+
+放好后照样跑 `sh deploy.sh`：已就位且 MD5 正确的文件直接跳过下载。
 
 - **麦克风录音**：点红圆点开始（实时波形 + 计时），再点停止 → 自动解码提交 → 字幕流出。需要浏览器安全上下文：板上 chromium（127.0.0.1）没问题；从 PC 用裸 IP 访问时麦克风被禁，用上传模式
 - **上传音频**：点虚线框或把文件拖进去（wav / mp3 / flac / ogg / m4a，浏览器里解码成 16kHz 单声道再提交）

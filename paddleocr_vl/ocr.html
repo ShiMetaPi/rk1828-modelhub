@@ -82,6 +82,29 @@
   .preview { width: 100%; max-width: 460px; margin: 0 auto; border-radius: 12px;
              box-shadow: var(--shadow-sm); display: none; }
 
+  /* ── 模式选择（OCR / 表格 / 图表 / 公式） ───────────────────── */
+  .modes { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .chip {
+    border: 1px solid var(--hairline);
+    background: var(--card);
+    color: var(--text-2);
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s, transform .05s;
+    user-select: none;
+  }
+  .chip:hover:not(.active) { color: var(--text); background: rgba(0, 122, 255, .06); }
+  .chip:active { transform: scale(.97); }
+  .chip.active {
+    background: var(--blue);
+    color: #fff;
+    border-color: var(--blue);
+  }
+
   /* ── 按钮 ────────────────────────────────────────────────────── */
   .actions { display: flex; gap: 10px; align-items: center; }
   .btn {
@@ -141,7 +164,7 @@
     <header class="hero">
       <span class="tag">PaddleOCR-VL · RK1828</span>
       <h1>文字识别</h1>
-      <p class="lede">上传一张图片（PNG / JPG），从图片里抽出文字。<br>
+      <p id="lede" class="lede">上传一张图片（PNG / JPG），从图片里抽出文字。<br>
         公式、表格、条码都能混在一张图里——PaddleOCR-VL 一次性读出来。</p>
     </header>
 
@@ -153,6 +176,13 @@
         <input id="file" type="file" accept="image/png,image/jpeg" hidden>
       </div>
       <img id="preview" class="preview" alt="待识别图片">
+
+      <div id="modes" class="modes" role="tablist" aria-label="识别模式">
+        <button type="button" class="chip active" data-mode="ocr"     role="tab" aria-selected="true">文字 OCR</button>
+        <button type="button" class="chip"        data-mode="table"   role="tab" aria-selected="false">表格</button>
+        <button type="button" class="chip"        data-mode="chart"   role="tab" aria-selected="false">图表</button>
+        <button type="button" class="chip"        data-mode="formula" role="tab" aria-selected="false">公式</button>
+      </div>
 
       <div class="actions">
         <button id="run" class="btn btn-primary" disabled>开始识别</button>
@@ -182,10 +212,20 @@
   const status = document.getElementById('status');
   const sText  = document.getElementById('status-text');
   const sDot   = status.querySelector('.dot');
+  const lede   = document.getElementById('lede');
+  const modes  = document.querySelectorAll('#modes .chip');
 
   let currentFile = null;
   let currentBlobUrl = null;
   let inflight = null;
+  let currentMode = 'ocr';
+
+  const LEDES = {
+    ocr:     '上传一张图片（PNG / JPG），从图片里抽出文字。<br>公式、表格、条码都能混在一张图里——PaddleOCR-VL 一次性读出来。',
+    table:   '表格识别模式：把图片里的表格还原成 Markdown / HTML 结构，行列对齐、数字保持原文。',
+    chart:   '图表识别模式：把图片里的柱状图、折线图、饼图转成结构化数据，方便二次处理。',
+    formula: '公式识别模式：把图片里的数学公式转成 LaTeX，长公式、根号、积分、求和都能识别。',
+  };
 
   function setStatus(state, msg) {
     sDot.className = 'dot ' + state;
@@ -239,6 +279,20 @@
     pickFile(e.dataTransfer.files[0]);
   });
 
+  // ── mode chip ────────────────────────────────────────────────
+  modes.forEach(chip => {
+    chip.addEventListener('click', () => {
+      modes.forEach(c => {
+        c.classList.remove('active');
+        c.setAttribute('aria-selected', 'false');
+      });
+      chip.classList.add('active');
+      chip.setAttribute('aria-selected', 'true');
+      currentMode = chip.dataset.mode;
+      lede.innerHTML = LEDES[currentMode] || LEDES.ocr;
+    });
+  });
+
   // ── clear ──────────────────────────────────────────────────────
   clear.addEventListener('click', () => {
     currentFile = null;
@@ -268,6 +322,7 @@
 
       const fd = new FormData();
       fd.append('file', currentFile);
+      fd.append('mode', currentMode);
       let resp;
       try {
         resp = await fetch('/api/ocr', { method: 'POST', body: fd });

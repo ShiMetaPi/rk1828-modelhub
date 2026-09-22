@@ -290,6 +290,7 @@ class Handler(BaseHTTPRequestHandler):
         parts = body.split(boundary)
         img_bytes = None
         img_ext = "jpg"
+        prompt_mode = "ocr"   # PaddleOCR-VL supports ocr/table/chart/formula
         for p in parts:
             if b'Content-Disposition' not in p:
                 continue
@@ -307,7 +308,10 @@ class Handler(BaseHTTPRequestHandler):
                     ext = os.path.splitext(fn)[1].lower().lstrip('.')
                     if ext in ("jpg", "jpeg", "png"):
                         img_ext = "jpg" if ext == "jpeg" else ext
-                break
+            elif 'name="mode"' in headers:
+                v = data.decode('utf-8', errors='ignore').strip()
+                if v in ("ocr", "table", "chart", "formula"):
+                    prompt_mode = v
         if not img_bytes:
             self.send_json({"error": "no file part"}, code=400)
             return
@@ -373,7 +377,7 @@ class Handler(BaseHTTPRequestHandler):
             s.connect(SOCK)
             s.sendall((json.dumps({"cmd": "infer", "qid": qid,
                                    "img": in_path,
-                                   "prompt": "ocr"}) + "\n").encode())
+                                   "prompt": prompt_mode}) + "\n").encode())
 
             buf = b""
             while True:

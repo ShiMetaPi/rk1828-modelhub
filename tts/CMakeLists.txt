@@ -5,12 +5,13 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -Wall")
 
-# 板子 SDK 头文件路径（rknn3_api.h 等）
-set(SDK_INCLUDE "/root/chat_demo/include" CACHE PATH "rknn3_api.h include dir")
+# 板子 SDK 头文件根目录（含 rknn3_api.h）
+# 默认 <demo>/engine/sdk（已 git tracked），start.sh 自动编译时可 -DSDK_ROOT=<sibling>/vl/engine 覆盖
+set(SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/engine/sdk" CACHE PATH "rknn3 sdk root (dir containing rknn3_api.h)")
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/tokenizers-cpp/include
-    ${SDK_INCLUDE}
+    ${SDK_ROOT}
 )
 
 # 源文件（官方 talker/speech_decoder + 声音克隆提取器 + socket server）

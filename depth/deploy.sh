@@ -20,6 +20,14 @@ set -e
 REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-depth}"
 HERE=$(cd "$(dirname "$0")" && pwd)
+# Sync source from git (silent skip if not in a clone, e.g. tarball deploy)
+if git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "Syncing source from $(git -C "$HERE" config --get remote.origin.url 2>/dev/null || echo git)..."
+  git -C "$HERE" pull --ff-only 2>&1 | sed 's/^/  /'
+  if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+    echo "warning: git pull failed, continuing with local source"
+  fi
+fi
 MODEL_DIR="${MODEL_DIR:-$HERE/model}"
 DL="${DL_DIR:-/userdata/tmp/depth}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"

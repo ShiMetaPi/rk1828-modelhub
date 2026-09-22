@@ -22,6 +22,18 @@
 #include "rknn3_api.h"
 #include "time_utils.h"
 
+// SAMPLE_PARAMS — single definition site (declared extern in paddleocr_vl.h).
+// Mirrors the official rknn3-model-zoo main.cc values: greedy-ish decode
+// (top_k=1, temperature=0) with mild repeat_penalty=1.1.
+const rknn3_sampling_params SAMPLE_PARAMS = {
+    .top_k            = 1,
+    .top_p            = 0.9f,
+    .temperature      = 0.0f,
+    .repeat_penalty   = 1.1f,
+    .frequency_penalty= 0.0f,
+    .presence_penalty = 0.0f,
+};
+
 
 int init_internal_share(rknn_app_context_t* app_ctx, uint32_t core_mask_vision, uint32_t core_mask_llm)
 {

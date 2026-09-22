@@ -416,6 +416,7 @@ class Handler(BaseHTTPRequestHandler):
 
 # ── main ──────────────────────────────────────────────────────────────
 def main():
+    global PORT, ENGINE_BIN, MODEL_DIR, ENGINE_LIB, SOCK, ENGINE_LOG
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--engine-bin", default=ENGINE_BIN)
@@ -424,7 +425,6 @@ def main():
     ap.add_argument("--sock", default=SOCK)
     ap.add_argument("--engine-log", default=ENGINE_LOG)
     a = ap.parse_args()
-    global PORT, ENGINE_BIN, MODEL_DIR, ENGINE_LIB, SOCK, ENGINE_LOG
     PORT, ENGINE_BIN, MODEL_DIR, ENGINE_LIB, SOCK, ENGINE_LOG = \
         a.port, a.engine_bin, a.model_dir, a.engine_lib, a.sock, a.engine_log
 

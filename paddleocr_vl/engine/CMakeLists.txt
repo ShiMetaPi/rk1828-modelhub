@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(ocr_engine CXX)
+project(ocr_engine C CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

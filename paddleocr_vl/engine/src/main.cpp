@@ -6,7 +6,9 @@
 // /tmp/ocr_engine.sock, release on "unload" or SIGTERM.
 //
 // Patterned after depth_engine.cc (same project) and the official paddleocr_vl
-// CLI (main.cc). Image loading uses stb_image (single-header); token output is
+// CLI (main.cc). Image loading delegates to utils/image_utils.c (stb_image
+// is implemented there as the single STB_IMAGE_IMPLEMENTATION site — keeping
+// it here too would cause duplicate-symbol link errors); token output is
 // streamed per-token via the result_callback.
 
 #include <errno.h>
@@ -32,11 +34,6 @@
 #include "rknn3_api.h"
 #include "time_utils.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ONLY_JPEG
-#define STBI_ONLY_PNG
-#include "../../3rdparty/stb/stb_image.h"
-
 // ── prompt normalization (matches official main.cc) ──────────────────
 static const char* normalize_prompt(const char* prompt)
 {
@@ -52,17 +49,16 @@ static const char* normalize_prompt(const char* prompt)
     return DEFAULT_PROMPT;
 }
 
-// ── sampling (matches official SAMPLE_PARAMS) ─────────────────────────
-static const rknn3_sampling_params SAMPLE_PARAMS = {
-    .top_k            = 1,
-    .top_p            = 0.9f,
-    .temperature      = 0.0f,
-    .repeat_penalty   = 1.1f,
-    .frequency_penalty= 0.0f,
-    .presence_penalty = 0.0f,
-};
-
+// SAMPLE_PARAMS is defined in paddleocr_vl.cc (kept there to match the
+// official demo's split: init/inference/release live there).
 #define MAX_CONTEXT_LEN 4096
+
+// Chat template pieces (declared extern in rknn_paddleocr_vl_llm.h, originally
+// defined in upstream main.cc which we replaced). Values copied verbatim from
+// rknn3-model-zoo/examples/paddleocr_vl/cpp/main.cc.
+const char* system_prompt  = "";
+const char* prompt_prefix  = "<|begin_of_sentence|>User: ";
+const char* prompt_postfix = "\nAssistant:\n";
 
 // ── embedding (mmap of llm.embed.bin; mirrors official main.cc) ───────
 struct embedding_info {
@@ -202,23 +198,16 @@ static int embed_callback(void* userdata, int32_t* tokens, uint64_t num_tokens,
     return 0;
 }
 
-// ── image load via stb (RGB888, any input size; vision handles resize) ─
+// ── image load (delegates to image_utils.c; RGB888 / any input size) ───
+// Vision sub-module does the resize to 504x504 internally. read_image()
+// handles JPEG/PNG/BMP via the embedded stb_image implementation in
+// image_utils.c (DISABLE_RGA / DISABLE_LIBJPEG).
 static int load_image_stb(const char* path, image_buffer_t* img)
 {
-    int w, h, c;
-    unsigned char* data = stbi_load(path, &w, &h, &c, 3); // force 3 channels
-    if (!data) {
-        fprintf(stderr, "[ocr] stbi_load failed for %s\n", path);
+    if (read_image(path, img) != 0) {
+        fprintf(stderr, "[ocr] read_image failed for %s\n", path);
         return -1;
     }
-    img->virt_addr     = data;
-    img->width         = w;
-    img->height        = h;
-    img->width_stride  = w;
-    img->height_stride = h;
-    img->format        = IMAGE_FORMAT_RGB888;
-    img->size          = w * h * 3;
-    img->fd            = -1;
     return 0;
 }
 
@@ -337,10 +326,15 @@ static void do_infer(int fd, long qid, const char* img_path, const char* prompt_
         return;
     }
 
-    // build multimodal tensor (matches official main.cc)
+    // build multimodal tensor (matches official main.cc). The prompt MUST
+    // start with the <image> tag — the RKNN runtime looks for it in the
+    // tokenized prompt and substitutes the image embeds in its place; without
+    // it, rknn3_session_run fails with "Failed to find image_start_token".
+    static std::string prompt_with_image;
+    prompt_with_image = std::string("<image>") + normalize_prompt(prompt_mode);
     memset(&g_tensor, 0, sizeof(g_tensor));
     g_tensor.name          = (char*)"input_embeds";
-    g_tensor.prompt        = normalize_prompt(prompt_mode);
+    g_tensor.prompt        = prompt_with_image.c_str();
     g_tensor.image.image_embed = g_img_embeds;
     if (g_app_ctx.mlpar.embeds_ndims == 2) {
         g_tensor.image.n_image_tokens = g_app_ctx.mlpar.embeds_shape[0];
@@ -367,7 +361,7 @@ static void do_infer(int fd, long qid, const char* img_path, const char* prompt_
         g_vision_embeds, g_img_embeds, g_tensor, g_n_inputs, &g_perf);
     int64_t total_us = getCurrentTimeUs() - t0;
 
-    stbi_image_free(g_src_image.virt_addr);
+    free(g_src_image.virt_addr);  // image_utils.c uses stb_image which allocates via malloc
     g_src_image.virt_addr = nullptr;
 
     g_stream_fd = -1;

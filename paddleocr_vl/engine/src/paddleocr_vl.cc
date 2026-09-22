@@ -25,6 +25,12 @@
 // SAMPLE_PARAMS — single definition site (declared extern in paddleocr_vl.h).
 // Mirrors the official rknn3-model-zoo main.cc values: greedy-ish decode
 // (top_k=1, temperature=0) with mild repeat_penalty=1.1.
+// Tested on wechat letterhead (~1023 tokens, lots of repeated boilerplate
+// like "附图"/"修改"/"说明书"): bumping repeat_penalty to 1.2 and adding
+// small frequency/presence penalties (0.05) does NOT reduce the repetition
+// — model appears to commit to a fixed slot count for long patent-style
+// documents regardless of decoding params. Keep defaults; the slot-count
+// is a property of the converted RKNN model, not sampling.
 const rknn3_sampling_params SAMPLE_PARAMS = {
     .top_k            = 1,
     .top_p            = 0.9f,

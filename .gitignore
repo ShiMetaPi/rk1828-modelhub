@@ -74,3 +74,14 @@ recordings/
 yolo26/model/
 depth/demo_*
 depth/frame_*
+
+# 临时草稿：早期设计探索 HTML / 一次性调试脚本 / 临时分片下载 / 录屏
+depth/depth_*.html
+parts_stash/
+rk1828_recordings/
+/layout_stream.txt
+/run_frame.txt
+/run_wechat.txt
+/stream_frame.txt
+/stream_wechat.txt
+/stream_analyze.py

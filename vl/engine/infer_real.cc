@@ -293,7 +293,8 @@ bool RealInfer::Impl::ResolveTag(const char* tag, const char* name, int* id, std
 }
 
 bool RealInfer::Impl::Init(const std::string& dir, std::string* err) {
-    std::string mdir = dir + "/model";
+    // 路径统一后（26c1f29）：--model 直接指向权重目录，文件平铺其中，不再有 model/ 子目录
+    std::string mdir = dir;
     tokenizer = new Tokenizer(TOKENIZER_BACKEND_LLAMA,
                               (mdir + "/Qwen2.5-VL-3B-llm.tokenizer.gguf").c_str());
     if (!ResolveTag("<|vision_start|>", "<|vision_start|>", &vs_id_, err) ||

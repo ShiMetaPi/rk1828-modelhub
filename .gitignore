@@ -62,6 +62,11 @@ release_mirror/
 # 拍摄分镜 / 板端内部分档（含个人 IP、环境信息，不进公开仓库）
 docs_private/
 
+# 用户上传 / 微信图等个人图片（不进公开仓库；板端测试图走 docs/img/*.png）
+/*.jpg
+/*.jpeg
+/*.webp
+
 # 板端录屏产物（含个人环境画面与声音，不进公开仓库）
 recordings/
 

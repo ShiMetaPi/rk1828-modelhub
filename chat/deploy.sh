@@ -24,8 +24,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 # Sync source from git (silent skip if not in a clone, e.g. tarball deploy)
 if git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Syncing source from $(git -C "$HERE" config --get remote.origin.url 2>/dev/null || echo git)..."
-  git -C "$HERE" pull --ff-only 2>&1 | sed 's/^/  /'
-  if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+  out=$(git -C "$HERE" pull --ff-only 2>&1) || rc=$?
+  printf '%s\n' "$out" | sed 's/^/  /'
+  if [ "${rc:-0}" -ne 0 ]; then
     echo "warning: git pull failed, continuing with local source"
   fi
 fi

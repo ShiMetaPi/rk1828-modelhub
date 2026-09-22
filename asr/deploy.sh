@@ -29,6 +29,9 @@ if git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "warning: git pull failed, continuing with local source"
   fi
 fi
+# Self-heal executable bit on the prebuilt official binary (git on Windows
+# checkouts often strips +x; start.sh would then bail with "not found")
+[ -f "$HERE/rknn_qwen3_asr_demo_online" ] && chmod +x "$HERE/rknn_qwen3_asr_demo_online"
 MODEL_DIR="${MODEL_DIR:-$HERE/model}"
 DL="${DL_DIR:-/userdata/tmp/asr}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"

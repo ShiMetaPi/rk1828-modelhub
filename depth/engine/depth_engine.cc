@@ -43,7 +43,7 @@
 #include "float16.h"
 #include "rknn3_api.h"
 
-static const char* kDefaultModelDir = "/root/depth_demo/model";
+static const char* kDefaultModelDir = "model";   // relative default; depth_engine.py passes model_dir explicitly
 static const char* kDefaultSock = "/tmp/depth_engine.sock";
 
 // ── 时间 ────────────────────────────────────────────────────────────

@@ -50,7 +50,7 @@ const int kTotalUpsample = 1920;
 const int kSampleRate = 24000;
 
 const char* kDefaultSock = "/tmp/tts_engine.sock";
-const char* kDefaultModelDir = "/root/Qwen3_TTS_deploy";
+const char* kDefaultModelDir = "model";   // relative default; tts_engine.py passes model_dir explicitly
 
 void write_wav(const std::string& filename, const std::vector<float>& audio, int sample_rate) {
     int num_channels = 1;

@@ -18,8 +18,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 # ── 配置 ──────────────────────────────────────────────────────────────
-TTS_MODEL_DIR = os.environ.get("TTS_MODEL_DIR", "/userdata/models/qwen3-tts")
-TTS_BIN       = os.environ.get("TTS_BIN", "/root/tts_demo/tts_engine")
+_THIS_DIR     = os.path.dirname(os.path.abspath(__file__))
+TTS_MODEL_DIR = os.environ.get("TTS_MODEL_DIR", os.path.join(_THIS_DIR, "model"))
+TTS_BIN       = os.environ.get("TTS_BIN", os.path.join(_THIS_DIR, "tts_engine"))
+_ENGINE_PAT   = '^' + TTS_BIN + ' '   # pgrep/pkill 匹配 C++ 二进制（带参数前缀），不会误杀 python3 tts_engine.py
 TTS_SOCK      = os.environ.get("TTS_SOCK", "/tmp/tts_engine.sock")
 OUTPUT_DIR    = "/tmp"
 PORT          = 8088
@@ -32,7 +34,7 @@ def _engine_alive():
     """检查 C++ 引擎进程是否在跑（排除 Python 进程）"""
     try:
         # 精确匹配 C++ 二进制路径前缀，避免匹配 python3 tts_engine.py
-        r = subprocess.run(['pgrep', '-f', '^/root/tts_demo/tts_engine '],
+        r = subprocess.run(['pgrep', '-f', _ENGINE_PAT],
                           capture_output=True, timeout=3)
         return r.returncode == 0 and r.stdout.strip()
     except Exception:
@@ -76,7 +78,7 @@ def stop_engine():
     with _start_lock:
         _engine_proc = None  # 允许 GC 回收（但 pkill 已杀进程，不会 SIGPIPE）
         try:
-            subprocess.run(['pkill', '-f', '^/root/tts_demo/tts_engine '],
+            subprocess.run(['pkill', '-f', _ENGINE_PAT],
                           capture_output=True, timeout=5)
         except Exception:
             pass

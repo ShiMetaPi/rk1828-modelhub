@@ -40,7 +40,7 @@ std::vector<uint8_t> ReadFile(const std::string& path) {
 int main(int argc, char** argv) {
     std::string sock = "/tmp/vl_engine.sock";
     std::string device, prompt, image;
-    std::string model = "/userdata/models/qwen2.5-vl-3b";
+    std::string model = "model";   // relative default; watch.sh passes --model explicitly
     bool cli = false, mock = false, real = false;
 
     static option longopts[] = {

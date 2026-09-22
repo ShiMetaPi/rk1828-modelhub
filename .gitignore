@@ -19,6 +19,14 @@ depth_engine
 yolo26_engine
 build/
 
+# 各 demo deploy.sh 板端拉取的模型 / 运行库（不进仓库）
+vl/model/
+vl/lib/
+chat/model/
+tts/model/
+asr/model/
+depth/model/
+
 # 网卡限速等内部工具不放仓库
 resume_push.py
 

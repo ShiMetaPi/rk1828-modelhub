@@ -18,7 +18,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ── 配置 ──────────────────────────────────────────────────────────────
-ASR_DIR  = os.environ.get("ASR_DIR", "/root/asr_demo")
+ASR_DIR  = os.environ.get("ASR_DIR", os.path.dirname(os.path.abspath(__file__)))
 ASR_BIN  = os.path.join(ASR_DIR, "rknn_qwen3_asr_demo_online")
 MODEL    = os.path.join(ASR_DIR, "model")
 PORT     = 8090

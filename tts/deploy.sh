@@ -14,13 +14,14 @@
 # Overridable via env:
 #   GITHUB_REPO     repo (owner/name), default ShiMetaPi/rk1828-modelhub
 #   RELEASE_TAG     release tag, default models-tts
-#   MODEL_DIR       model root dir (flat), default /userdata/models/qwen3-tts
+#   MODEL_DIR       model root dir (flat), default <script dir>/model
 #   DL_DIR          download cache, default /userdata/tmp/tts
 set -e
 
+HERE=$(cd "$(dirname "$0")" && pwd)
 REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-tts}"
-MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen3-tts}"
+MODEL_DIR="${MODEL_DIR:-$HERE/model}"
 DL="${DL_DIR:-/userdata/tmp/tts}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
 # MIRROR_URL points to a local mirror root (e.g. http://169.254.62.175:8000); when set,
@@ -28,7 +29,6 @@ BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
 if [ -n "$MIRROR_URL" ]; then
   BASE="$MIRROR_URL/$TAG"
 fi
-HERE=$(cd "$(dirname "$0")" && pwd)
 
 # Asset list: asset_name|target_relative_path (all flat under MODEL_DIR)
 FILES="talker.rknn|talker.rknn
@@ -114,4 +114,4 @@ echo "$FILES" | while IFS='|' read -r name rel; do
 done
 
 echo
-echo "Done. To start:  cd /root/tts_demo && sh start.sh"
+echo "Done. To start:  cd $HERE && sh start.sh"

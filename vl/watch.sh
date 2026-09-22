@@ -4,7 +4,7 @@
 #   页面无活动超过 GRACE 秒且引擎在跑 → 杀引擎释放 NPU
 #   启动前 NPU 被其他 demo 占用 → 绝不硬闯（会挂死驱动），原因写 /tmp/vl_watch.msg 由页面透出
 DIR=$(cd "$(dirname "$0")" && pwd)
-MODEL=/userdata/models/qwen2.5-vl-3b
+MODEL="${VL_MODEL_DIR:-$DIR/model}"
 MODE=${1:-real}
 LAST=/tmp/vl_web.last
 MSG=/tmp/vl_watch.msg
@@ -37,7 +37,7 @@ while true; do
       sleep 10
     else
       rm -f "$MSG"
-      export LD_LIBRARY_PATH=$MODEL/lib:$LD_LIBRARY_PATH
+      export LD_LIBRARY_PATH=$DIR/lib:$LD_LIBRARY_PATH
       setsid nohup "$DIR/vl_engine" --$MODE --model $MODEL --sock /tmp/vl_engine.sock \
           > /tmp/vl_engine.log 2>&1 < /dev/null &
       sleep 8

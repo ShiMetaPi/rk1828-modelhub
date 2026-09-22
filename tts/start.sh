@@ -6,7 +6,7 @@ set -e
 
 cd "$(dirname "$0")"
 DEMO_DIR="$(pwd)"
-MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen3-tts}"
+MODEL_DIR="${MODEL_DIR:-$DEMO_DIR/model}"
 TTS_BIN="${DEMO_DIR}/tts_engine"
 
 # -- NPU availability check --
@@ -29,7 +29,7 @@ check_npu() {
 # -- compile C++ (if not already built) --
 if [ ! -x "$TTS_BIN" ]; then
   echo "[tts] first run, compiling..."
-  SDK_ROOT="/root/vl_demo/engine"
+  SDK_ROOT="${TTS_SDK_ROOT:-$DEMO_DIR/../vl/engine}"
   if [ ! -d "$SDK_ROOT/sdk" ]; then
     echo "[error] vl_demo SDK not found; deploy vl_demo first"
     exit 1

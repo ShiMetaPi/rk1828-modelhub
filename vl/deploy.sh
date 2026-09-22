@@ -7,21 +7,24 @@
 # What it does:
 #   - Downloads the models + .so needed by the vl demo from GitHub Releases
 #   - MD5 verification (asset_name -> md5 inlined in this script)
-#   - Models go to /userdata/models/qwen2.5-vl-3b/, .so files go here too
-#     (vl_engine links -L this dir at compile time)
+#   - Models go to <demo>/model/, .so files go to <demo>/lib/
+#     (vl_engine links -L the lib dir at compile time)
 #   - Compiles vl_engine (requires gcc / libjpeg-dev / librknn3_api.so)
 #   - Re-runnable: files already in place and verified are skipped
 #
 # Overridable via env:
 #   GITHUB_REPO     repo, default ShiMetaPi/rk1828-modelhub
 #   RELEASE_TAG     release tag, default models-vl
-#   MODEL_DIR       model root dir, default /userdata/models/qwen2.5-vl-3b
+#   MODEL_DIR       model root dir, default <script dir>/model
+#   LIB_DIR         runtime libs dir, default <script dir>/lib
 #   DL_DIR          download cache, default /userdata/tmp/vl
 set -e
 
+HERE=$(cd "$(dirname "$0")" && pwd)
 REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-vl}"
-MODEL_DIR="${MODEL_DIR:-/userdata/models/qwen2.5-vl-3b}"
+MODEL_DIR="${MODEL_DIR:-$HERE/model}"
+LIB_DIR="${LIB_DIR:-$HERE/lib}"
 DL="${DL_DIR:-/userdata/tmp/vl}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
 # MIRROR_URL points to a local mirror root (e.g. http://169.254.62.175:8000); when set,
@@ -29,19 +32,18 @@ BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
 if [ -n "$MIRROR_URL" ]; then
   BASE="$MIRROR_URL/$TAG"
 fi
-HERE=$(cd "$(dirname "$0")" && pwd)
 
 # Asset list: asset_name|target_relative_path
-FILES="Qwen2.5-VL-3B-llm.rknn|model/Qwen2.5-VL-3B-llm.rknn
-Qwen2.5-VL-3B-llm.weight|model/Qwen2.5-VL-3B-llm.weight
-Qwen2.5-VL-3B-llm.embed.bin|model/Qwen2.5-VL-3B-llm.embed.bin
-Qwen2.5-VL-3B-llm.tokenizer.gguf|model/Qwen2.5-VL-3B-llm.tokenizer.gguf
-Qwen2.5-VL-3B-vision.rknn|model/Qwen2.5-VL-3B-vision.rknn
-Qwen2.5-VL-3B-vision.weight|model/Qwen2.5-VL-3B-vision.weight
-librknn3_api.so|lib/librknn3_api.so
-librknn3_api_rkcp.so|lib/librknn3_api_rkcp.so
-librga.so|lib/librga.so
-libSpeedUP.so|lib/libSpeedUP.so"
+MODEL_FILES="Qwen2.5-VL-3B-llm.rknn|Qwen2.5-VL-3B-llm.rknn
+Qwen2.5-VL-3B-llm.weight|Qwen2.5-VL-3B-llm.weight
+Qwen2.5-VL-3B-llm.embed.bin|Qwen2.5-VL-3B-llm.embed.bin
+Qwen2.5-VL-3B-llm.tokenizer.gguf|Qwen2.5-VL-3B-llm.tokenizer.gguf
+Qwen2.5-VL-3B-vision.rknn|Qwen2.5-VL-3B-vision.rknn
+Qwen2.5-VL-3B-vision.weight|Qwen2.5-VL-3B-vision.weight"
+LIB_FILES="librknn3_api.so|librknn3_api.so
+librknn3_api_rkcp.so|librknn3_api_rkcp.so
+librga.so|librga.so
+libSpeedUP.so|libSpeedUP.so"
 
 # MD5 checksum table
 MD5="
@@ -97,9 +99,13 @@ deploy_one() {   # $1=asset name $2=target absolute path
 }
 
 # 1. Download all models and .so
-echo "$FILES" | while IFS='|' read -r name rel; do
+echo "$MODEL_FILES" | while IFS='|' read -r name rel; do
   [ -n "$name" ] || continue
   deploy_one "$name" "$MODEL_DIR/$rel"
+done
+echo "$LIB_FILES" | while IFS='|' read -r name rel; do
+  [ -n "$name" ] || continue
+  deploy_one "$name" "$LIB_DIR/$rel"
 done
 
 # 2. Compile vl_engine

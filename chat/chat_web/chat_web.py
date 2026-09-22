@@ -39,11 +39,13 @@ BYE_EXIT_AFTER = 10       # pagehide beacon 后宽限几秒才退出（防 F5 �
 SERVICE_EXIT_AFTER = 300  # 心跳消失多久整个服务退出（浏览器异常死掉兜底）
 
 # ---- 配置 ----
-W4_DIR = "/root/rknn_MiniCPM5_2B_demo/model"
-W8_DIR = "/root/w8a16"
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_MODEL_DIR = os.environ.get("CHAT_MODEL_DIR", os.path.join(os.path.dirname(_THIS_DIR), "model"))
+W4_DIR = os.environ.get("W4_DIR", os.path.join(_MODEL_DIR, "w4"))
+W8_DIR = os.environ.get("W8_DIR", os.path.join(_MODEL_DIR, "w8"))
 VOCAB = W4_DIR + "/MiniCPM5-2B.tokenizer.gguf"   # 词表/embed 与量化无关，两版共用
 EMBED = W4_DIR + "/MiniCPM5-2B.embed.bin"
-CHAT_TEMPLATE = "/root/rknn_MiniCPM5_2B_demo/minicpm5.jinja"
+CHAT_TEMPLATE = os.path.join(_MODEL_DIR, "minicpm5.jinja")
 
 MODEL_PORT = 8081   # rkllm3-server
 WEB_PORT = 8089     # 本页面

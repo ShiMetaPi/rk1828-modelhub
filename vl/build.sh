@@ -3,7 +3,7 @@
 # 依赖：板上 g++、libjpeg（dev 头文件）、模型包 lib/librknn3_api.so（链接期）
 set -e
 cd "$(dirname "$0")"
-MODEL_LIB=/userdata/models/qwen2.5-vl-3b/lib
+MODEL_LIB="${VL_LIB_DIR:-$PWD/lib}"
 
 # ── 依赖探测：缺什么列什么，缺则退出 ─────────────────────────────
 check_deps() {

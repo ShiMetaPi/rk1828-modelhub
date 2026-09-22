@@ -7,23 +7,24 @@
 # What it does:
 #   - Downloads the model assets needed by the chat demo from GitHub Releases
 #   - MD5 verification (asset_name -> md5 inlined in this script, no central md5sum.txt)
-#   - Places them under the demo's default paths; W4 uses /root/rknn_MiniCPM5_2B_demo,
-#     W8 uses /root/w8a16 (independent dirs, chosen at runtime by the chat_web start script)
-#   - Copies minicpm5.jinja from the repo into the W4 dir
+#   - Places them under the demo dir: W4 -> <demo>/model/w4, W8 -> <demo>/model/w8
+#     (chosen at runtime by the chat_web start script)
+#   - Copies minicpm5.jinja from the repo into <demo>/model/
 #   - Re-runnable: files already in place and verified are skipped
 #
 # Overridable via env:
 #   GITHUB_REPO     repo (owner/name), default ShiMetaPi/rk1828-modelhub
 #   RELEASE_TAG     release tag, default models-chat
-#   W4_DIR          W4 model dir, default /root/rknn_MiniCPM5_2B_demo
-#   W8_DIR          W8 model dir, default /root/w8a16
+#   W4_DIR          W4 model dir, default <script dir>/model/w4
+#   W8_DIR          W8 model dir, default <script dir>/model/w8
 #   DL_DIR          download cache, default /userdata/tmp/chat
 set -e
 
+HERE=$(cd "$(dirname "$0")" && pwd)
 REPO="${GITHUB_REPO:-ShiMetaPi/rk1828-modelhub}"
 TAG="${RELEASE_TAG:-models-chat}"
-W4_DIR="${W4_DIR:-/root/rknn_MiniCPM5_2B_demo}"
-W8_DIR="${W8_DIR:-/root/w8a16}"
+W4_DIR="${W4_DIR:-$HERE/model/w4}"
+W8_DIR="${W8_DIR:-$HERE/model/w8}"
 DL="${DL_DIR:-/userdata/tmp/chat}"
 BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
 # MIRROR_URL points to a local mirror root (e.g. http://169.254.62.175:8000); when set,
@@ -31,7 +32,6 @@ BASE="${BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
 if [ -n "$MIRROR_URL" ]; then
   BASE="$MIRROR_URL/$TAG"
 fi
-HERE=$(cd "$(dirname "$0")" && pwd)
 
 WHAT="${1:-all}"
 case "$WHAT" in
@@ -39,11 +39,11 @@ case "$WHAT" in
   *) echo "unknown target: $WHAT (choose w4 / w8 / all, default all)"; exit 1 ;;
 esac
 
-# Asset list: asset_name|target_relative_path
-W4_FILES="MiniCPM5-2B.rknn|model/MiniCPM5-2B.rknn
-MiniCPM5-2B.weight|model/MiniCPM5-2B.weight
-MiniCPM5-2B.embed.bin|model/MiniCPM5-2B.embed.bin
-MiniCPM5-2B.tokenizer.gguf|model/MiniCPM5-2B.tokenizer.gguf"
+# Asset list: asset_name|target_relative_path (flat under W4_DIR / W8_DIR)
+W4_FILES="MiniCPM5-2B.rknn|MiniCPM5-2B.rknn
+MiniCPM5-2B.weight|MiniCPM5-2B.weight
+MiniCPM5-2B.embed.bin|MiniCPM5-2B.embed.bin
+MiniCPM5-2B.tokenizer.gguf|MiniCPM5-2B.tokenizer.gguf"
 
 W8_FILES="MiniCPM5-2B-w8.rknn|MiniCPM5-2B.rknn
 MiniCPM5-2B-w8.weight|MiniCPM5-2B.weight"
@@ -118,10 +118,10 @@ esac
 
 # chat template (ships with the repo; rkllm3-server loads it at runtime)
 if [ "$want_w4" = 1 ] && [ -f "$HERE/minicpm5.jinja" ]; then
-  mkdir -p "$W4_DIR"
-  cp -f "$HERE/minicpm5.jinja" "$W4_DIR/minicpm5.jinja"
-  echo "ok: $W4_DIR/minicpm5.jinja in place"
+  mkdir -p "$HERE/model"
+  cp -f "$HERE/minicpm5.jinja" "$HERE/model/minicpm5.jinja"
+  echo "ok: $HERE/model/minicpm5.jinja in place"
 fi
 
 echo
-echo "Done. To start:  cd /root/chat_demo && sh start.sh"
+echo "Done. To start:  cd $HERE && sh start.sh"

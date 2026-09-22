@@ -79,4 +79,4 @@ echo "$FILES" | while IFS='|' read -r name rel; do
 done
 
 echo
-echo "Done. To start:  cd /root/asr_demo && sh start.sh"
+echo "Done. To start:  cd $HERE && sh start.sh"

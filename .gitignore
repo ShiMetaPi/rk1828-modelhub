@@ -4,6 +4,10 @@
 *.embed.bin
 *.gguf
 *.bin
+# 模型转换中间产物（onnx + .npy 校准数据 + .config.pkl）也不进 git
+*.onnx
+*.npy
+*.config.pkl
 
 # 本地环境
 .claude/

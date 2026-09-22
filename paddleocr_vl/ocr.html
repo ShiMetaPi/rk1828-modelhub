@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文字识别 · PaddleOCR-VL</title>
+<style>
+  /* 蓝白 Apple 风（与 depth/asr/tts 定稿一致）：
+     蓝白配色、毛玻璃卡片、系统蓝 #007AFF、大圆角软阴影、居中轻标题 */
+  :root {
+    --blue: #007aff;
+    --blue-hover: #0066cc;
+    --blue-tint: #e8f2ff;
+    --text: #1d1d1f;
+    --text-2: #6e6e73;
+    --text-3: #8e8e93;
+    --hairline: rgba(0, 0, 0, .08);
+    --card: rgba(255, 255, 255, .78);
+    --fill: #f2f2f7;
+    --shadow: 0 10px 30px rgba(15, 70, 150, .10);
+    --shadow-sm: 0 2px 10px rgba(15, 70, 150, .07);
+    --ok: #34c759; --warn: #ff9500; --err: #ff3b30;
+    --sans: -apple-system, "SF Pro Display", "Helvetica Neue", "Noto Sans CJK SC",
+            "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background:
+      radial-gradient(1100px 500px at 50% -8%, rgba(120, 175, 255, .28), transparent 70%),
+      linear-gradient(180deg, #e3effc 0%, #f0f6fe 32%, #fbfdff 66%, #ffffff 100%);
+    background-attachment: fixed;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 56px 20px 80px;
+  }
+  ::selection { background: rgba(0, 122, 255, .18); }
+  :focus-visible { outline: 3px solid rgba(0, 122, 255, .45); outline-offset: 2px; border-radius: 6px; }
+  .wrap { width: min(920px, 100%); }
+
+  /* ── 刊头 ─────────────────────────────────────────────────────── */
+  .hero { text-align: center; margin-bottom: 30px;
+          animation: rise .55s cubic-bezier(.25,.1,.25,1) both; }
+  .tag { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+         color: #0a63d2; background: var(--blue-tint);
+         padding: 5px 13px; border-radius: 9999px; margin-bottom: 14px; }
+  .hero h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.1;
+             color: var(--blue); }
+  .hero .lede { margin-top: 10px; font-size: 14.5px; color: var(--text-2); line-height: 1.6; }
+
+  /* ── 毛玻璃卡片 ───────────────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(20px) saturate(1.35);
+    -webkit-backdrop-filter: blur(20px) saturate(1.35);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+  }
+  .source { padding: 22px; display: flex; flex-direction: column; gap: 18px;
+            align-items: center;
+            animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .07s; }
+
+  /* ── 上传区 ──────────────────────────────────────────────────── */
+  .drop {
+    width: 100%;
+    border: 2px dashed rgba(0, 122, 255, .35);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(232, 242, 255, .55), rgba(232, 242, 255, .15));
+    padding: 28px 20px;
+    text-align: center;
+    transition: border-color .15s, background .15s;
+    cursor: pointer;
+  }
+  .drop.drag { border-color: var(--blue); background: rgba(232, 242, 255, .85); }
+  .drop .icon { font-size: 38px; color: var(--blue); margin-bottom: 8px; }
+  .drop .hint { font-size: 14px; color: var(--text-2); }
+  .drop .sub  { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+  .preview { width: 100%; max-width: 460px; margin: 0 auto; border-radius: 12px;
+             box-shadow: var(--shadow-sm); display: none; }
+
+  /* ── 按钮 ────────────────────────────────────────────────────── */
+  .actions { display: flex; gap: 10px; align-items: center; }
+  .btn {
+    border: 0; cursor: pointer;
+    padding: 9px 22px; border-radius: 10px;
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    transition: background .15s, transform .05s, opacity .15s;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--blue-hover); }
+  .btn-ghost { background: transparent; color: var(--text-2); border: 1px solid var(--hairline); }
+  .btn-ghost:hover:not(:disabled) { background: rgba(0, 0, 0, .03); color: var(--text); }
+
+  /* ── 状态条 ──────────────────────────────────────────────────── */
+  .status {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12.5px; color: var(--text-2);
+    padding: 4px 11px; border-radius: 9999px;
+    background: var(--fill);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+  .dot.idle    { background: var(--text-3); }
+  .dot.loading { background: var(--warn); animation: pulse 1.2s infinite; }
+  .dot.ready   { background: var(--ok); }
+  .dot.error   { background: var(--err); }
+
+  /* ── 结果卡 ───────────────────────────────────────────────────── */
+  .result { padding: 22px; display: flex; flex-direction: column; gap: 14px;
+            animation: rise .55s cubic-bezier(.25,.1,.25,1) both; animation-delay: .14s; }
+  .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .result-title { font-size: 16px; font-weight: 600; color: var(--text); }
+  .result-stats { font-size: 11.5px; color: var(--text-3); font-family: var(--mono); }
+  .result-text {
+    font-size: 15px; line-height: 1.75; color: var(--text);
+    background: var(--fill); padding: 18px 20px;
+    border-radius: 12px; min-height: 110px;
+    white-space: pre-wrap; word-break: break-word;
+    font-family: var(--mono);
+  }
+  .result-text.empty { color: var(--text-3); font-style: italic;
+                       font-family: var(--sans); font-size: 13.5px;
+                       display: flex; align-items: center; justify-content: center; }
+  .caret { display: inline-block; width: 2px; height: 1em; background: var(--blue);
+           margin-left: 1px; vertical-align: text-bottom; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <span class="tag">PaddleOCR-VL · RK1828</span>
+      <h1>文字识别</h1>
+      <p class="lede">上传一张图片（PNG / JPG），从图片里抽出文字。<br>
+        公式、表格、条码都能混在一张图里——PaddleOCR-VL 一次性读出来。</p>
+    </header>
+
+    <section class="card source">
+      <div id="drop" class="drop" tabindex="0" aria-label="点击或拖拽图片">
+        <div class="icon">⬆</div>
+        <div class="hint">点击选择图片，或拖拽到这里</div>
+        <div class="sub">PNG / JPG · 最大 20 MB</div>
+        <input id="file" type="file" accept="image/png,image/jpeg" hidden>
+      </div>
+      <img id="preview" class="preview" alt="待识别图片">
+
+      <div class="actions">
+        <button id="run" class="btn btn-primary" disabled>开始识别</button>
+        <button id="clear" class="btn btn-ghost" disabled>清空</button>
+        <span id="status" class="status"><span class="dot idle"></span><span id="status-text">未连接</span></span>
+      </div>
+    </section>
+
+    <section class="card result">
+      <div class="result-head">
+        <span class="result-title">识别结果</span>
+        <span id="stats" class="result-stats"></span>
+      </div>
+      <div id="text" class="result-text empty">上传图片后点「开始识别」</div>
+    </section>
+  </div>
+
+<script>
+(() => {
+  const drop   = document.getElementById('drop');
+  const file   = document.getElementById('file');
+  const prev   = document.getElementById('preview');
+  const run    = document.getElementById('run');
+  const clear  = document.getElementById('clear');
+  const text   = document.getElementById('text');
+  const stats  = document.getElementById('stats');
+  const status = document.getElementById('status');
+  const sText  = document.getElementById('status-text');
+  const sDot   = status.querySelector('.dot');
+
+  let currentFile = null;
+  let currentBlobUrl = null;
+  let inflight = null;
+
+  function setStatus(state, msg) {
+    sDot.className = 'dot ' + state;
+    sText.textContent = msg;
+  }
+
+  async function pollStatus() {
+    try {
+      const r = await fetch('/api/status', { cache: 'no-store' });
+      const j = await r.json();
+      if (j.state === 'ready')      setStatus('ready', '模型已加载');
+      else if (j.state === 'loading') setStatus('loading', '加载模型中…');
+      else if (j.state === 'error')  setStatus('error', '加载失败：' + (j.err || ''));
+      else                           setStatus('idle', '空闲');
+    } catch (e) {
+      setStatus('error', '无法连接到服务');
+    }
+  }
+  pollStatus();
+  setInterval(pollStatus, 3000);
+
+  // ── file pick / drag ─────────────────────────────────────────
+  function pickFile(f) {
+    if (!f) return;
+    if (!/^image\/(png|jpe?g)$/i.test(f.type)) {
+      setStatus('error', '只支持 PNG / JPG');
+      return;
+    }
+    if (f.size > 20 * 1024 * 1024) {
+      setStatus('error', '图片超过 20 MB');
+      return;
+    }
+    currentFile = f;
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = URL.createObjectURL(f);
+    prev.src = currentBlobUrl;
+    prev.style.display = 'block';
+    run.disabled = false;
+    clear.disabled = false;
+    setStatus('idle', '已选择图片');
+  }
+  drop.addEventListener('click', () => file.click());
+  drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') file.click(); });
+  file.addEventListener('change', (e) => pickFile(e.target.files[0]));
+  ['dragover', 'dragenter'].forEach(ev =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(ev =>
+    drop.addEventListener(ev, () => drop.classList.remove('drag')));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    pickFile(e.dataTransfer.files[0]);
+  });
+
+  // ── clear ──────────────────────────────────────────────────────
+  clear.addEventListener('click', () => {
+    currentFile = null;
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
+    prev.removeAttribute('src');
+    prev.style.display = 'none';
+    file.value = '';
+    run.disabled = true;
+    clear.disabled = true;
+    text.className = 'result-text empty';
+    text.textContent = '上传图片后点「开始识别」';
+    stats.textContent = '';
+    setStatus('idle', '已清空');
+  });
+
+  // ── submit ─────────────────────────────────────────────────────
+  run.addEventListener('click', async () => {
+    if (!currentFile || inflight) return;
+    inflight = (async () => {
+      run.disabled = true;
+      clear.disabled = true;
+      text.className = 'result-text';
+      text.textContent = '';
+      stats.textContent = '';
+      setStatus('loading', '识别中…');
+
+      const fd = new FormData();
+      fd.append('file', currentFile);
+      let resp;
+      try {
+        resp = await fetch('/api/ocr', { method: 'POST', body: fd });
+      } catch (e) {
+        setStatus('error', '请求失败：' + e.message);
+        inflight = null;
+        run.disabled = false;
+        clear.disabled = false;
+        return;
+      }
+      if (!resp.ok && resp.status !== 200) {
+        const j = await resp.json().catch(() => ({}));
+        text.textContent = 'Error: ' + (j.error || ('HTTP ' + resp.status));
+        setStatus('error', '请求失败');
+        inflight = null;
+        run.disabled = false;
+        clear.disabled = false;
+        return;
+      }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder('utf-8');
+      let buf = '';
+      let rawText = '';
+      let lastCaret = null;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        // SSE: events are separated by \n\n, lines start with "data: "
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+          const evt = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          const line = evt.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let j;
+          try { j = JSON.parse(line.slice(6)); } catch (_) { continue; }
+          if (j.ev === 'token') {
+            rawText += j.text || '';
+            // strip layout tags <fcel> <lcel> <nl> <ucel> for display
+            const display = rawText.replace(/<\/?[a-zA-Z]+>/g, '');
+            if (lastCaret) lastCaret.remove();
+            text.innerHTML = '';
+            for (const ch of display) text.appendChild(document.createTextNode(ch));
+            const c2 = document.createElement('span');
+            c2.className = 'caret'; text.appendChild(c2);
+            lastCaret = c2;
+          } else if (j.ev === 'done') {
+            const ms = (j.vision_ms|0) + 'ms';
+            const llm = (j.llm_ms|0) + 'ms';
+            stats.textContent = 'vision ' + ms + ' · llm ' + llm +
+                               ' · ' + (j.tokens|0) + ' tokens';
+            setStatus('ready', '完成');
+            if (lastCaret) lastCaret.remove();
+          } else if (j.ev === 'error') {
+            text.textContent = 'Error: ' + (j.msg || 'unknown');
+            setStatus('error', '识别失败');
+            if (lastCaret) lastCaret.remove();
+          }
+        }
+      }
+      inflight = null;
+      run.disabled = false;
+      clear.disabled = false;
+    })();
+  });
+
+  // ── page close -> release NPU ──────────────────────────────────
+  function sendBye() {
+    try {
+      navigator.sendBeacon('/api/bye', new Blob([''], { type: 'text/plain' }));
+    } catch (_) {}
+  }
+  window.addEventListener('pagehide', sendBye);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') sendBye();
+  });
+})();
+</script>
+</body>
+</html>

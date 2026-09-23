@@ -39,7 +39,7 @@ MiniCPM5-2B, W4A16 / W8A16 switching on the fly, streaming output.
 </td>
 <td width="50%" align="center" valign="top">
 
-### 📷 Video QA
+### 📷 Video Q&A
 
 <img src="docs/img/vl_demo.png" alt="Video QA demo" width="420">
 
@@ -121,7 +121,9 @@ PaddleOCR-VL multimodal OCR, text / table / chart / formula in four modes, table
 **[→ paddleocr_vl/README_EN.md](paddleocr_vl/README_EN.md)**
 
 </td>
-<td width="50%" align="center" valign="top">
+<td width="50%" align="center" valign="middle">
+
+to be continued...
 
 </td>
 </tr>

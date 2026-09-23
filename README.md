@@ -121,7 +121,9 @@ PaddleOCR-VL 多模态 OCR，文字 / 表格 / 图表 / 公式四种模式一键
 **[→ paddleocr_vl/README.md](paddleocr_vl/README.md)**
 
 </td>
-<td width="50%" align="center" valign="top">
+<td width="50%" align="center" valign="middle">
+
+未完待续...
 
 </td>
 </tr>

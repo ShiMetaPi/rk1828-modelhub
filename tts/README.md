@@ -1,4 +1,4 @@
-[← 返回总览](../README.md)
+[← 返回总览](../README.md) · [English](README_EN.md)
 
 # 🔊 Qwen3-TTS 语音合成 Demo
 

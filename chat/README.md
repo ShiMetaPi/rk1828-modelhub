@@ -1,4 +1,4 @@
-[← 返回总览](../README.md)
+[← 返回总览](../README.md) · [English](README_EN.md)
 
 # 💬 MiniCPM5-2B 聊天 Demo
 

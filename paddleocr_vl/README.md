@@ -1,7 +1,41 @@
-# PaddleOCR-VL Demo
+[← 返回总览](../README.md) · [English](README_EN.md)
 
-通用 OCR demo，基于 PaddleOCR-VL 多模态视觉-语言模型（百度开源）跑在 RK1828 NPU 上。
-本目录是项目 6 合一 demo 仓库（chat/vl/tts/asr/depth/yolo26 + 本 demo）的第 7 个。
+# 📄 文档解析
+
+网页上传一张图片，**文字 / 表格 / 图表 / 公式四种模式一键切换**：文字 OCR 直接抽文本、表格还原成行列结构、图表（柱状图 / 折线图 / 饼图等）转成结构化数据、公式转 LaTeX。基于 PaddleOCR-VL（百度开源的多模态视觉-语言模型）跑在 RK1828 NPU 上。
+
+<table>
+<tr>
+<td width="25%" align="center" valign="top">
+
+**文字 OCR** · 抽文本
+
+<img src="../docs/img/ocr_text.png" alt="文字 OCR 模式" width="210">
+
+</td>
+<td width="25%" align="center" valign="top">
+
+**表格** · 还原行列
+
+<img src="../docs/img/ocr_table.png" alt="表格识别模式" width="210">
+
+</td>
+<td width="25%" align="center" valign="top">
+
+**图表** · 结构化数据
+
+<img src="../docs/img/ocr_chart.png" alt="图表识别模式" width="210">
+
+</td>
+<td width="25%" align="center" valign="top">
+
+**公式** · LaTeX
+
+<img src="../docs/img/ocr_formula.png" alt="公式识别模式" width="210">
+
+</td>
+</tr>
+</table>
 
 | 端口 | 引擎形态 | 模型 |
 |---|---|---|
@@ -51,7 +85,7 @@ RKNN3 NPU (vision 504² + mlpar + 4-bit LLM)
 | vision/ | position_embedding_model.bin |
 
 Vision 输入 504×504（已固化在 `engine/src/vision/rknn_paddleocr_vl_vision.h`）。
-模型目录预留了 OCR 之外的接口（Table / Chart / Formula），但 UI 只暴露 OCR 模式。
+模型目录沿用 rknn3-model-zoo 上游布局（llm/ + vision/）；文字 / 表格 / 图表 / 公式四种模式由前端 prompt 切换。
 
 ## deploy.sh：两路拉模型
 
@@ -103,8 +137,8 @@ engine/
 
 ## 当前局限 / 后续可做
 
-- UI 只暴露 **OCR 模式**（默认 prompt）。Table / Chart / Formula 引擎已支持，
-  改 ocr.html 加按钮即可，前端会传 `prompt:"table"` 等。
+- 图表模式的输出和表格一样是 Markdown 管道表，但前端暂只给「表格」模式接了渲染，
+  图表结果目前以纯文本显示。
 - 模型未上 GitHub Release（v1 阶段）。首次部署需手动 rsync。
 - 性能：参考 README，vision ~507ms + LLM decode ~240 tok/s，
   1-2 秒内出结果是常见情况。

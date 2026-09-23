@@ -247,6 +247,23 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        # Static files (katex JS/CSS etc.)
+        if path.startswith("/katex/"):
+            fname = "katex/" + path[7:]   # path like /katex/katex.min.js
+            full = os.path.join(_THIS_DIR, fname)
+            if os.path.isfile(full):
+                ext = os.path.splitext(fname)[1].lower()
+                ct = {"": "application/octet-stream", ".js": "application/javascript",
+                      ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg"}.get(ext, "text/plain")
+                with open(full, "rb") as f:
+                    body = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ct)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
         self.send_json({"error": "not found"}, code=404)
 
     def do_POST(self):
@@ -445,6 +462,12 @@ def main():
             try:
                 env = dict(os.environ)
                 env.setdefault("DISPLAY", ":0")
+                # Strip proxy env vars — board Clash proxy is often unreachable
+                # and Chromium inherits http_proxy/https_proxy from the shell.
+                for k in list(env):
+                    if k.lower() in ("http_proxy", "https_proxy", "no_proxy",
+                                      "http_proxy_user", "https_proxy_user"):
+                        del env[k]
                 subprocess.Popen(
                     ["chromium", "--no-sandbox", "--disable-gpu", "--no-first-run",
                      "--new-window", f"http://127.0.0.1:{PORT}"],

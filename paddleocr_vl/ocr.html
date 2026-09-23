@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>文字识别 · PaddleOCR-VL</title>
+<title>文档解析 · PaddleOCR-VL</title>
 <style>
   /* 蓝白 Apple 风（与 depth/asr/tts 定稿一致）：
      蓝白配色、毛玻璃卡片、系统蓝 #007AFF、大圆角软阴影、居中轻标题 */
@@ -139,16 +139,37 @@
   .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .result-title { font-size: 16px; font-weight: 600; color: var(--text); }
   .result-stats { font-size: 11.5px; color: var(--text-3); font-family: var(--mono); }
+  .btn-render {
+    border: 0; cursor: pointer;
+    padding: 7px 16px; border-radius: 10px;
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    background: var(--fill); color: var(--text-2);
+    border: 1px solid var(--hairline);
+    transition: background .15s, color .15s;
+  }
+  .btn-render:hover:not(:disabled) { background: var(--blue-tint); color: var(--blue); border-color: var(--blue); }
+  .btn-render:disabled { opacity: .45; cursor: not-allowed; }
   .result-text {
     font-size: 15px; line-height: 1.75; color: var(--text);
     background: var(--fill); padding: 18px 20px;
     border-radius: 12px; min-height: 110px;
-    white-space: pre-wrap; word-break: break-word;
+    white-space: pre-wrap; word-break: break-word; overflow-x: auto;
     font-family: var(--mono);
   }
   .result-text.empty { color: var(--text-3); font-style: italic;
                        font-family: var(--sans); font-size: 13.5px;
                        display: flex; align-items: center; justify-content: center; }
+  .result-text table {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--sans); font-size: 13.5px;
+    white-space: normal; line-height: 1.5; color: var(--text);
+  }
+  .result-text table td {
+    border: 1px solid rgba(0, 0, 0, .09);
+    padding: 7px 10px; text-align: left; vertical-align: top;
+  }
+  .result-text table tr:nth-child(even) td { background: rgba(0, 122, 255, .035); }
+  .result-text table tr:first-child td { background: var(--blue-tint); font-weight: 600; }
   .caret { display: inline-block; width: 2px; height: 1em; background: var(--blue);
            margin-left: 1px; vertical-align: text-bottom; animation: blink 1s infinite; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -163,9 +184,9 @@
   <div class="wrap">
     <header class="hero">
       <span class="tag">PaddleOCR-VL · RK1828</span>
-      <h1>文字识别</h1>
-      <p id="lede" class="lede">上传一张图片（PNG / JPG），从图片里抽出文字。<br>
-        公式、表格、条码都能混在一张图里——PaddleOCR-VL 一次性读出来。</p>
+      <h1>文档解析</h1>
+      <p id="lede" class="lede">上传一张图片（PNG / JPG），文字、表格、图表、公式一次解析。<br>
+        四种模式自由切换——PaddleOCR-VL 在 RK1828 上本地推理。</p>
     </header>
 
     <section class="card source">
@@ -195,11 +216,19 @@
       <div class="result-head">
         <span class="result-title">识别结果</span>
         <span id="stats" class="result-stats"></span>
+        <button id="render" class="btn-render" disabled>渲染公式</button>
       </div>
       <div id="text" class="result-text empty">上传图片后点「开始识别」</div>
+      <div id="latex-wrap" style="display:none; margin-top:10px;">
+        <div style="font-size:12px;color:var(--text-3);margin-bottom:6px;">公式预览</div>
+        <div id="latex-out" style="background:#fff;border:1px solid var(--hairline);border-radius:12px;padding:24px;text-align:center;min-height:60px;"></div>
+      </div>
     </section>
   </div>
 
+<link rel="stylesheet" href="katex/katex.min.css">
+<script src="katex/katex.min.js"></script>
+<script src="katex/auto-render.min.js"></script>
 <script>
 (() => {
   const drop   = document.getElementById('drop');
@@ -214,18 +243,71 @@
   const sDot   = status.querySelector('.dot');
   const lede   = document.getElementById('lede');
   const modes  = document.querySelectorAll('#modes .chip');
+  const render = document.getElementById('render');
+  const latexWrap = document.getElementById('latex-wrap');
+  const latexOut  = document.getElementById('latex-out');
 
   let currentFile = null;
   let currentBlobUrl = null;
   let inflight = null;
   let currentMode = 'ocr';
+  let rawText = '';   // full text including LaTeX markers, for render
 
   const LEDES = {
-    ocr:     '上传一张图片（PNG / JPG），从图片里抽出文字。<br>公式、表格、条码都能混在一张图里——PaddleOCR-VL 一次性读出来。',
+    ocr:     '上传一张图片（PNG / JPG），文字、表格、图表、公式一次解析。<br>四种模式自由切换——PaddleOCR-VL 在 RK1828 上本地推理。',
     table:   '表格识别模式：把图片里的表格还原成 Markdown / HTML 结构，行列对齐、数字保持原文。',
     chart:   '图表识别模式：把图片里的柱状图、折线图、饼图转成结构化数据，方便二次处理。',
     formula: '公式识别模式：把图片里的数学公式转成 LaTeX，长公式、根号、积分、求和都能识别。',
   };
+
+  // ── 表格渲染（管道/Markdown → HTML <table>） ─────────────────
+  function escHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function splitPipeRow(line) {
+    const raw = line.split('|');
+    if (raw.length && raw[0] === '') raw.shift();            // leading '|'
+    if (raw.length && raw[raw.length - 1] === '') raw.pop(); // trailing '|'
+    return raw.map(c => c.trim());
+  }
+  function parsePipeTable(str) {
+    const rows = [];
+    for (const line of str.split('\n')) {
+      if (!line.trim()) continue;
+      const cells = splitPipeRow(line);
+      if (cells.length) rows.push(cells);
+    }
+    return rows;
+  }
+  function buildTableHTML(rows) {
+    let h = '<table>';
+    for (const r of rows) {
+      h += '<tr>';
+      for (const c of r) h += '<td>' + escHtml(c) + '</td>';
+      h += '</tr>';
+    }
+    return h + '</table>';
+  }
+  function renderTableResult() {
+    const rows = parsePipeTable(rawText);
+    text.className = 'result-text';
+    text.innerHTML = rows.length
+      ? buildTableHTML(rows)
+      : '<span style="color:var(--text-3)">未识别到表格</span>';
+  }
+  function updateRenderButton() {
+    if (currentMode === 'table') {
+      render.textContent = '渲染表格';
+      render.style.display = '';
+    } else if (currentMode === 'formula') {
+      render.textContent = '渲染公式';
+      render.style.display = '';
+    } else {
+      render.style.display = 'none';
+    }
+  }
+  updateRenderButton();
 
   function setStatus(state, msg) {
     sDot.className = 'dot ' + state;
@@ -290,7 +372,31 @@
       chip.setAttribute('aria-selected', 'true');
       currentMode = chip.dataset.mode;
       lede.innerHTML = LEDES[currentMode] || LEDES.ocr;
+      updateRenderButton();
     });
+  });
+
+  // ── render LaTeX ─────────────────────────────────────────────
+  render.addEventListener('click', () => {
+    if (currentMode === 'table') { renderTableResult(); return; }
+    latexWrap.style.display = 'block';
+    latexOut.innerHTML = '';
+    const tex = rawText.replace(/<\/?[a-zA-Z]+>/g, '').trim();
+    if (!tex) { latexOut.textContent = '无公式内容'; return; }
+    try {
+      // formula 输出是图文混排（\[...\] 数学块夹中文），先把整段放进容器，
+      // 再用 auto-render 逐个识别 \[...\] / \(...\) 块渲染，文字保留原样。
+      latexOut.textContent = tex;
+      renderMathInElement(latexOut, {
+        delimiters: [
+          { left: '\\[', right: '\\]', display: true },
+          { left: '\\(', right: '\\)', display: false },
+        ],
+        throwOnError: false,
+      });
+    } catch (e) {
+      latexOut.innerHTML = '<span style="color:var(--err);font-size:13px">渲染失败: ' + e.message + '</span>';
+    }
   });
 
   // ── clear ──────────────────────────────────────────────────────
@@ -306,6 +412,9 @@
     text.className = 'result-text empty';
     text.textContent = '上传图片后点「开始识别」';
     stats.textContent = '';
+    rawText = '';
+    latexWrap.style.display = 'none';
+    render.disabled = true;
     setStatus('idle', '已清空');
   });
 
@@ -318,6 +427,9 @@
       text.className = 'result-text';
       text.textContent = '';
       stats.textContent = '';
+      rawText = '';
+      latexWrap.style.display = 'none';
+      render.disabled = true;
       setStatus('loading', '识别中…');
 
       const fd = new FormData();
@@ -345,7 +457,7 @@
       const reader = resp.body.getReader();
       const dec = new TextDecoder('utf-8');
       let buf = '';
-      let rawText = '';
+      rawText = '';
       let lastCaret = null;
       while (true) {
         const { value, done } = await reader.read();
@@ -376,6 +488,8 @@
                                ' · ' + (j.tokens|0) + ' tokens';
             setStatus('ready', '完成');
             if (lastCaret) lastCaret.remove();
+            render.disabled = false;
+            if (currentMode === 'table') renderTableResult();
           } else if (j.ev === 'error') {
             text.textContent = 'Error: ' + (j.msg || 'unknown');
             setStatus('error', '识别失败');
@@ -396,9 +510,6 @@
     } catch (_) {}
   }
   window.addEventListener('pagehide', sendBye);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') sendBye();
-  });
 })();
 </script>
 </body>

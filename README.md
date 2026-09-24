@@ -18,6 +18,14 @@
 - **定位**：给板子配套的一键部署演示集——`sh deploy.sh` 拉模型、`sh start.sh` 起服务，开箱即用。
 - **模型转换**：模型先用 [RKNN-Toolkit3](https://github.com/airockchip/rknn-toolkit3) 转成 `.rknn`，再参照官方 [rknn3-model-zoo](https://github.com/airockchip/rknn3-model-zoo) 的示例移植成 C++ 引擎，跑在 RKNPU 上。
 
+## 项目框架
+
+七个 demo 共用一套运行时链路：浏览器页面 → Python 网页层 → Unix socket → C++ 引擎 → RKNN3 API → RK1828 NPU。
+
+<img src="docs/img/rk1828-modelhub_cn.png" alt="RK1828 ModelHub 项目框架图">
+
+交互版架构图（可缩放、可搜索、可切换主题）：[docs/rk1828-arch-zh.html](docs/rk1828-arch-zh.html)，克隆到本地后用浏览器打开。
+
 ## Demo 列表
 
 涵盖 LLM、VL、TTS… 等多种模型，一键部署，demo 详情如下：
@@ -134,15 +142,13 @@ PaddleOCR-VL 多模态 OCR，文字 / 表格 / 图表 / 公式四种模式一键
 七个 demo 套路一样，四步：**拿代码 → 进目录 → 拉模型 → 启动**。
 
 ```bash
-git clone https://github.com/ShiMetaPi/rk1828-modelhub.git   # 或 Gitee（国内快）
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git
 cd rk1828-modelhub/<demo 目录>                              # chat / vl / tts / asr / depth / yolo26 / paddleocr_vl
 sh deploy.sh                                                # 只拉这个 demo 需要的模型
 sh start.sh                                                 # 起网页服务
 ```
 
 模型从 GitHub Releases 下载，`deploy.sh` 带断点续传和 MD5 校验，传到一半断了重跑就行；启动脚本会自己探测缺什么依赖，缺了直接告诉你。板子下载慢或不方便联网时，可以先在电脑上把模型下好再拷进 demo 的 `model/`——具体做法看各 demo README 里的「板子下载慢？在电脑上先下好」。
-
-浏览器打开对应端口：聊天 **8089** · 视频问答 **8080** · 语音合成 **8088** · 语音字幕 **8090** · 深度相机 **8091** · 实时识别 **8092** · 文档解析 **8093**。具体步骤、模型大小、板上路径都在各自的 README 里，点进去照着做就行。
 
 ## 需要什么
 

@@ -18,6 +18,14 @@ A collection of large-model demos running on the **RK1828 NPU board**, covering 
 - **Positioning**: a one-click-deploy demo suite for the board — `sh deploy.sh` pulls the models, `sh start.sh` starts the service; works out of the box.
 - **Model conversion**: models are first converted to `.rknn` with [RKNN-Toolkit3](https://github.com/airockchip/rknn-toolkit3), then ported into C++ engines following the official [rknn3-model-zoo](https://github.com/airockchip/rknn3-model-zoo) examples and run on the RKNPU.
 
+## Architecture
+
+All seven demos share one runtime chain: browser page → Python web layer → Unix socket → C++ engine → RKNN3 API → RK1828 NPU.
+
+<img src="docs/img/rk1828-modelhub_en.png" alt="RK1828 ModelHub architecture diagram">
+
+Interactive version (zoom, search, theme toggle): [docs/rk1828-arch.html](docs/rk1828-arch.html) — open it in a browser after cloning the repo.
+
 ## Demos
 
 Covering LLM, VL, TTS and more — one-click deploy; details below:
@@ -134,15 +142,14 @@ to be continued...
 All seven demos follow the same four steps: **get code → enter directory → pull models → start**.
 
 ```bash
-git clone https://github.com/ShiMetaPi/rk1828-modelhub.git   # or Gitee (faster in China)
+git clone https://github.com/ShiMetaPi/rk1828-modelhub.git
 cd rk1828-modelhub/<demo dir>                              # chat / vl / tts / asr / depth / yolo26 / paddleocr_vl
 sh deploy.sh                                                # pull only this demo's models
 sh start.sh                                                 # start the web service
 ```
 
-Models are downloaded from GitHub Releases; `deploy.sh` does resumable transfer + MD5 checks, so rerun after an interrupted download. The start script probes missing dependencies and tells you directly. If the board downloads slowly or has no network, download the models on a PC first and copy them into the demo's `model/` — see each demo's README ("Slow on the board? Download on a PC first").
+Models are downloaded from GitHub Releases; `deploy.sh` does resumable transfer + MD5 checks, so rerun after an interrupted download. The start script probes missing dependencies and tells you directly. If the board downloads slowly or has no network, download the models on a PC first and copy them into the demo's `model/` — see each demo's README.
 
-Open the browser at the corresponding port: Chat **8089** · Video QA **8080** · TTS **8088** · Speech Subtitles **8090** · Depth Camera **8091** · Real-time Vision **8092** · Document Parsing **8093**. Steps, model sizes, and on-board paths are in each README.
 
 ## Requirements
 

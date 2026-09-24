@@ -52,27 +52,27 @@ if [ -n "$MIRROR_URL" ]; then
 fi
 
 # Asset list (target = relative path under MODEL_DIR)
-FILES="llm/PaddleOCR-llm.rknn|llm/PaddleOCR-llm.rknn
-llm/PaddleOCR-llm.weight|llm/PaddleOCR-llm.weight
-llm/PaddleOCR-llm.tokenizer.gguf|llm/PaddleOCR-llm.tokenizer.gguf
-llm/PaddleOCR-llm.embed.bin|llm/PaddleOCR-llm.embed.bin
-vision/PaddleOCR-vision.rknn|vision/PaddleOCR-vision.rknn
-vision/PaddleOCR-vision.weight|vision/PaddleOCR-vision.weight
-vision/PaddleOCR-vision-mlp_AR.rknn|vision/PaddleOCR-vision-mlp_AR.rknn
-vision/PaddleOCR-vision-mlp_AR.weight|vision/PaddleOCR-vision-mlp_AR.weight
-vision/position_embedding_model.bin|vision/position_embedding_model.bin"
+FILES="PaddleOCR-llm.rknn|llm/PaddleOCR-llm.rknn
+PaddleOCR-llm.weight|llm/PaddleOCR-llm.weight
+PaddleOCR-llm.tokenizer.gguf|llm/PaddleOCR-llm.tokenizer.gguf
+PaddleOCR-llm.embed.bin|llm/PaddleOCR-llm.embed.bin
+PaddleOCR-vision.rknn|vision/PaddleOCR-vision.rknn
+PaddleOCR-vision.weight|vision/PaddleOCR-vision.weight
+PaddleOCR-vision-mlp_AR.rknn|vision/PaddleOCR-vision-mlp_AR.rknn
+PaddleOCR-vision-mlp_AR.weight|vision/PaddleOCR-vision-mlp_AR.weight
+position_embedding_model.bin|vision/position_embedding_model.bin"
 
 # MD5 (asset name -> md5)
 MD5="
-llm/PaddleOCR-llm.rknn|a722ca3f2e19dd048e10d55c710835df
-llm/PaddleOCR-llm.weight|bccf6b7c46c3adfeaf6f3c78f52b3d60
-llm/PaddleOCR-llm.tokenizer.gguf|335594d4b5938c5a4c63559f9dc3f9a7
-llm/PaddleOCR-llm.embed.bin|5662eb849edbb0d1098c3c96c23dc378
-vision/PaddleOCR-vision.rknn|580572d2ced7694c3df3020872fbe615
-vision/PaddleOCR-vision.weight|6cf633ba47baf6a67541421aea23969f
-vision/PaddleOCR-vision-mlp_AR.rknn|84f53cf9018f955644af400a00fca9e1
-vision/PaddleOCR-vision-mlp_AR.weight|a865dc772c2423419f4b96fc925b3b83
-vision/position_embedding_model.bin|237be118cdffdf33d276a51594b8255a
+PaddleOCR-llm.rknn|a722ca3f2e19dd048e10d55c710835df
+PaddleOCR-llm.weight|bccf6b7c46c3adfeaf6f3c78f52b3d60
+PaddleOCR-llm.tokenizer.gguf|335594d4b5938c5a4c63559f9dc3f9a7
+PaddleOCR-llm.embed.bin|5662eb849edbb0d1098c3c96c23dc378
+PaddleOCR-vision.rknn|580572d2ced7694c3df3020872fbe615
+PaddleOCR-vision.weight|6cf633ba47baf6a67541421aea23969f
+PaddleOCR-vision-mlp_AR.rknn|84f53cf9018f955644af400a00fca9e1
+PaddleOCR-vision-mlp_AR.weight|a865dc772c2423419f4b96fc925b3b83
+position_embedding_model.bin|237be118cdffdf33d276a51594b8255a
 "
 
 # librknn3_api.so is shared across all demos; reuse vl's release tag.
